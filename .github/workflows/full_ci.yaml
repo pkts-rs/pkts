@@ -1,0 +1,36 @@
+name: full CI
+
+on:
+  merge_group:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  style_check:
+    name: Style check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        run: sh ./ci/install-rust.sh
+      - name: Check style
+        run: sh ci/style.sh
+
+  build_channels_linux:
+    name: Build Channels Linux
+    runs-on: ubuntu-22.04
+    env:
+      OS: linux
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        toolchain:
+          - stable
+          - 1.66.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust toolchain
+        run: TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/install-rust.sh
+      - name: Execute run.sh
+        run: TOOLCHAIN=${{ matrix.toolchain }} sh ./ci/run.sh

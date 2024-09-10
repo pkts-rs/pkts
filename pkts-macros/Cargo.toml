@@ -3,9 +3,11 @@ name = "pkts-macros"
 description = "procedural macros for deriving `pkts` library traits"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 license = "MIT OR Apache-2.0"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2021"
-repository = "https://github.com/pkts-rs/rscap"
+repository = "https://github.com/pkts-rs/pkts"
+keywords = ["packets", "network", "scapy", "parsing"]
+categories = ["network-programming", "encoding", "parsing"]
 
 [lib]
 proc-macro = true
