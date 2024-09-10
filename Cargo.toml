@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "pkts",
+    "pkts-common",
+    "pkts-macros",
+    "pktspec",
+]
+
