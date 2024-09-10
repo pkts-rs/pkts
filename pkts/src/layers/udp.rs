@@ -447,7 +447,7 @@ impl UdpBuildPhase for UdpBuildFinal {}
 /// use pkts::layers::udp::UdpBuilder;
 ///
 /// let payload = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05];
-/// let buffer = [0u8; 100];
+/// let mut buffer = [0u8; 100];
 ///
 /// let udp_builder = UdpBuilder::new(&mut buffer)
 ///     .sport(65321)
@@ -596,7 +596,7 @@ impl<'a> UdpBuilder<'a, UdpBuildPayload> {
     /// use pkts::layers::udp::UdpBuilder;
     ///
     /// let inner_payload = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05];
-    /// let buffer = [0u8; 100];
+    /// let mut buffer = [0u8; 100];
     ///
     /// let udp_builder = UdpBuilder::new(&mut buffer)
     ///     .sport(65321)
@@ -606,7 +606,7 @@ impl<'a> UdpBuilder<'a, UdpBuildPayload> {
     ///         .sport(2452)
     ///         .dport(80)
     ///         .chksum(0)
-    ///         .payload_raw(&mut inner_payload)
+    ///         .payload_raw(&inner_payload)
     ///         .build()
     ///     );
     ///

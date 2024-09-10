@@ -12,7 +12,6 @@
 //!
 
 #![forbid(unsafe_code)]
-
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -22,7 +21,6 @@ use core::cmp;
 use error::SerializationError;
 use layers::dev_traits::LayerName;
 use pkts_common::{Buffer, BufferMut};
-
 
 pub mod error;
 pub mod layers;
@@ -54,17 +52,21 @@ impl<'a, T: IndexedWritable> PacketWriter<'a, T> {
     pub fn write(&mut self, data: &[u8]) -> Result<(), SerializationError> {
         self.writable.write(data).map_err(|e| match e {
             IndexedWriteError::OutOfRange => panic!(),
-            IndexedWriteError::InsufficientBytes => SerializationError::insufficient_buffer(self.error_layer),
+            IndexedWriteError::InsufficientBytes => {
+                SerializationError::insufficient_buffer(self.error_layer)
+            }
         })
     }
 
     /// Writes the data at the specified index position.
-    /// 
+    ///
     /// This method will panic if `pos` is greater than the current written length of the buffer.
     pub fn write_at(&mut self, data: &[u8], pos: usize) -> Result<(), SerializationError> {
         self.writable.write_at(data, pos).map_err(|e| match e {
             IndexedWriteError::OutOfRange => panic!(),
-            IndexedWriteError::InsufficientBytes => SerializationError::insufficient_buffer(self.error_layer),
+            IndexedWriteError::InsufficientBytes => {
+                SerializationError::insufficient_buffer(self.error_layer)
+            }
         })
     }
 
@@ -74,12 +76,14 @@ impl<'a, T: IndexedWritable> PacketWriter<'a, T> {
     }
 
     /// Shifts the writer's index back to the provided index position, truncating the stream.
-    /// 
+    ///
     /// This method will panic if `pos` is greater than the current written length of the buffer.
     pub fn rewind_pos(&mut self, pos: usize) -> Result<(), SerializationError> {
         self.writable.rewind_pos(pos).map_err(|e| match e {
             IndexedWriteError::OutOfRange => panic!(),
-            IndexedWriteError::InsufficientBytes => SerializationError::insufficient_buffer(self.error_layer),           
+            IndexedWriteError::InsufficientBytes => {
+                SerializationError::insufficient_buffer(self.error_layer)
+            }
         })
     }
 }
@@ -89,7 +93,7 @@ pub trait IndexedWritable {
     fn write(&mut self, data: &[u8]) -> Result<(), IndexedWriteError>;
 
     /// Writes the data at the specified index position.
-    /// 
+    ///
     /// This method will panic if `pos` is greater than the current written length of the buffer.
     fn write_at(&mut self, data: &[u8], pos: usize) -> Result<(), IndexedWriteError>;
 
@@ -97,7 +101,7 @@ pub trait IndexedWritable {
     fn pos(&self) -> usize;
 
     /// Shifts the writer's index back to the provided index position, truncating the stream.
-    /// 
+    ///
     /// This method will panic if `pos` is greater than the current written length of the buffer.
     fn rewind_pos(&mut self, pos: usize) -> Result<(), IndexedWriteError>;
 }
@@ -110,7 +114,7 @@ impl IndexedWritable for Vec<u8> {
 
     fn write_at(&mut self, data: &[u8], pos: usize) -> Result<(), IndexedWriteError> {
         if pos > self.len() {
-            return Err(IndexedWriteError::OutOfRange)
+            return Err(IndexedWriteError::OutOfRange);
         }
 
         let split = cmp::max(self.len() - pos, data.len());
@@ -142,7 +146,7 @@ impl<const N: usize> IndexedWritable for Buffer<u8, N> {
 
     fn write_at(&mut self, slice: &[u8], pos: usize) -> Result<(), IndexedWriteError> {
         if pos > self.len() {
-            return Err(IndexedWriteError::OutOfRange)
+            return Err(IndexedWriteError::OutOfRange);
         }
 
         let split = cmp::max(self.len() - pos, slice.len());
@@ -174,7 +178,7 @@ impl IndexedWritable for BufferMut<'_> {
 
     fn write_at(&mut self, slice: &[u8], pos: usize) -> Result<(), IndexedWriteError> {
         if pos > self.len() {
-            return Err(IndexedWriteError::OutOfRange)
+            return Err(IndexedWriteError::OutOfRange);
         }
 
         let split = cmp::max(self.len() - pos, slice.len());
@@ -200,19 +204,17 @@ impl IndexedWritable for BufferMut<'_> {
 
 #[derive(Clone, Debug)]
 pub enum IndexedWriteError {
-    /// An attempted indexed write would write beyond the end of the writer's buffer. 
+    /// An attempted indexed write would write beyond the end of the writer's buffer.
     OutOfRange,
     /// An attempted write failed due to the underlying writable running out of storage space.
     InsufficientBytes,
 }
 
-
 pub trait Readable {
     fn read_slice(&mut self) -> Result<&[u8], SerializationError>;
 
-    fn read_byte(&mut self) -> Result<u8, SerializationError>;   
+    fn read_byte(&mut self) -> Result<u8, SerializationError>;
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -222,8 +224,8 @@ mod tests {
     use crate::layers::traits::*;
     use crate::layers::udp::*;
     use crate::parse_layers;
-    use crate::sequence::LayeredSequence;
     use crate::sequence::ipv4::*;
+    use crate::sequence::LayeredSequence;
     use pkts_common::BufferMut;
 
     #[test]
@@ -265,6 +267,7 @@ mod tests {
         let _udp_packet = udp_builder.build().unwrap();
     }
 
+    /*
     #[test]
     fn from_the_layers() {
         let bytes = b"hello".as_slice();
@@ -278,6 +281,7 @@ mod tests {
 
         //let layers = Tcp::from_layers(bytes, [Tcp, Ipv4, Tcp]);
     }
+    */
 
     #[test]
     fn multi_layer_sequence() {

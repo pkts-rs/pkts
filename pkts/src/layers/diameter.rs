@@ -25,7 +25,6 @@ use alloc::boxed::Box;
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::vec::Vec;
 
-
 use bitflags::bitflags;
 
 #[derive(Clone, Debug, Layer, StatelessLayer)]
@@ -247,8 +246,7 @@ impl<'a> DiameterRef<'a> {
 
     #[inline]
     pub fn unpadded_len(&self) -> u32 {
-        0x_00FF_FFFF
-            & u32::from_be_bytes(utils::to_array(self.data, 0).unwrap())
+        0x_00FF_FFFF & u32::from_be_bytes(utils::to_array(self.data, 0).unwrap())
     }
 
     #[inline]
@@ -258,8 +256,7 @@ impl<'a> DiameterRef<'a> {
 
     #[inline]
     pub fn comm_code(&self) -> u32 {
-        0x_00FF_FFFF
-            & u32::from_be_bytes(utils::to_array(self.data, 4).unwrap())
+        0x_00FF_FFFF & u32::from_be_bytes(utils::to_array(self.data, 4).unwrap())
     }
 
     #[inline]
@@ -280,7 +277,7 @@ impl<'a> DiameterRef<'a> {
     #[inline]
     pub fn avp_iter(&self) -> AvpIterRef<'a> {
         AvpIterRef {
-            bytes: &self.data[20..]
+            bytes: &self.data[20..],
         }
     }
 }
@@ -392,7 +389,8 @@ impl<'a> Iterator for AvpIterRef<'a> {
             return None;
         }
 
-        let unpadded_len = 0x_00FF_FFFF & u32::from_be_bytes(utils::to_array(self.bytes, 4).unwrap());
+        let unpadded_len =
+            0x_00FF_FFFF & u32::from_be_bytes(utils::to_array(self.bytes, 4).unwrap());
         let len = cmp::max(utils::padded_length::<4>(unpadded_len as usize), 12);
         let opt = GenericAvpRef::from_bytes_unchecked(&self.bytes[..len]);
         self.bytes = &self.bytes[len..];
@@ -1138,7 +1136,8 @@ impl<'a> Iterator for BaseAvpIterRef<'a> {
             return None;
         }
 
-        let unpadded_len = 0x_00FF_FFFF & u32::from_be_bytes(utils::to_array(self.bytes, 4).unwrap());
+        let unpadded_len =
+            0x_00FF_FFFF & u32::from_be_bytes(utils::to_array(self.bytes, 4).unwrap());
         let len = cmp::max(utils::padded_length::<4>(unpadded_len as usize), 12);
         let opt = BaseAvpRef::from_bytes_unchecked(&self.bytes[..len]);
         self.bytes = &self.bytes[len..];

@@ -2,8 +2,9 @@
 name = "pkts"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "tools for building, inspecting and modifying network protocol packets"
-# GATs stabilized in this version; required for `Sequence` types
-rust-version = "1.66"
+# 1.65 - GATs stabilized (required for some `Sequence` types)
+# 1.77 - `core::net` stabilized (needed for `no-std` IpAddr types)
+rust-version = "1.77"
 license = "MIT OR Apache-2.0"
 version = "0.2.0"
 edition = "2021"

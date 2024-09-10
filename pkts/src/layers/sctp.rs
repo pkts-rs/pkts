@@ -2660,9 +2660,9 @@ impl<'a> HeartbeatChunkRef<'a> {
                         reason: "insufficient bytes in SCTP HEARTBEAT chunk for header + Heartbeat Info option",
                     });
                 }
-                
+
                 #[allow(unused_variables)]
-                if let Err( e) = HeartbeatInfoRef::validate(&bytes[4..len]) {
+                if let Err(e) = HeartbeatInfoRef::validate(&bytes[4..len]) {
                     return Err(ValidationError {
                         layer: Sctp::name(),
                         class: ValidationErrorClass::InvalidValue,

@@ -469,7 +469,10 @@ impl Ipv4 {
     #[inline]
     pub fn ihl(&self) -> u8 {
         let len = self.options.byte_len();
-        assert!(len < (10 * 4), "too many options in Ipv4 to represent in the Internet Header Length (IHL) field");
+        assert!(
+            len < (10 * 4),
+            "too many options in Ipv4 to represent in the Internet Header Length (IHL) field"
+        );
         5 + (len / 4) as u8
     }
 
@@ -2154,7 +2157,8 @@ impl<'a> Ipv6Ref<'a> {
     #[inline]
     pub fn flow_label(&self) -> FlowLabel {
         FlowLabel {
-            value: (((self.data[1] & 0x0F) as u32) << 16) + u16::from_be_bytes(utils::to_array(self.data, 2).unwrap()) as u32
+            value: (((self.data[1] & 0x0F) as u32) << 16)
+                + u16::from_be_bytes(utils::to_array(self.data, 2).unwrap()) as u32,
         }
     }
 
@@ -2197,15 +2201,37 @@ impl<'a> Ipv6Ref<'a> {
     /// The source IP address of the packet.
     #[inline]
     pub fn src(&self) -> Ipv6Addr {
-        let segments: [u16; 8] = array::from_fn(|i| u16::from_be_bytes(utils::to_array(self.data, 8 + (i * 2)).unwrap()));
-        Ipv6Addr::new(segments[0], segments[1], segments[2], segments[3], segments[4], segments[5], segments[6], segments[7])
+        let segments: [u16; 8] = array::from_fn(|i| {
+            u16::from_be_bytes(utils::to_array(self.data, 8 + (i * 2)).unwrap())
+        });
+        Ipv6Addr::new(
+            segments[0],
+            segments[1],
+            segments[2],
+            segments[3],
+            segments[4],
+            segments[5],
+            segments[6],
+            segments[7],
+        )
     }
 
     /// The destination IP address of the packet.
     #[inline]
     pub fn dst(&self) -> Ipv6Addr {
-        let segments: [u16; 8] = array::from_fn(|i| u16::from_be_bytes(utils::to_array(self.data, 24 + (i * 2)).unwrap()));
-        Ipv6Addr::new(segments[0], segments[1], segments[2], segments[3], segments[4], segments[5], segments[6], segments[7])
+        let segments: [u16; 8] = array::from_fn(|i| {
+            u16::from_be_bytes(utils::to_array(self.data, 24 + (i * 2)).unwrap())
+        });
+        Ipv6Addr::new(
+            segments[0],
+            segments[1],
+            segments[2],
+            segments[3],
+            segments[4],
+            segments[5],
+            segments[6],
+            segments[7],
+        )
     }
 
     /// The payload of the packet, in raw bytes.

@@ -678,7 +678,7 @@ impl DescribePrepared {
 
 #[derive(Clone, Debug)]
 pub struct Execute {
-    portal_name: CString,   // empty string means unnamed portal
+    portal_name: CString,  // empty string means unnamed portal
     max_rows: Option<i32>, // None corresponds to 0
 }
 
@@ -737,7 +737,10 @@ impl Parse {
 
     #[inline]
     pub fn len(&self) -> usize {
-        5 + self.dst_stmt.as_bytes().len() + self.query.as_bytes().len() + 2 + 4 * self.type_ids.len()
+        5 + self.dst_stmt.as_bytes().len()
+            + self.query.as_bytes().len()
+            + 2
+            + 4 * self.type_ids.len()
     }
 
     #[inline]
@@ -878,8 +881,8 @@ impl StartupMessage {
 
 #[derive(Clone, Debug)]
 pub struct Bind {
-    dst_portal: CString,           // empty indicates unnamed portal
-    src_prepared: CString,         // empty indicates the unnamed prepared statement
+    dst_portal: CString,          // empty indicates unnamed portal
+    src_prepared: CString,        // empty indicates the unnamed prepared statement
     params_fmt: Vec<FormatCode>,  // 0 indicates text; 1 indicates binary.
     params: Vec<Option<Vec<u8>>>, // None means null parameter value
     results_fmt: Vec<FormatCode>,

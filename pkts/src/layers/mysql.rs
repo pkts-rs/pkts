@@ -161,8 +161,7 @@ impl<'a> MysqlPacketRef<'a> {
 
     #[inline]
     pub fn sequence_id(&self) -> u8 {
-        self
-            .data[3]
+        self.data[3]
     }
 
     #[inline]
