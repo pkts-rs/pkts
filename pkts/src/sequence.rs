@@ -68,8 +68,6 @@ use alloc::vec::Vec;
 type PktFilterDynFn = dyn Fn(&[u8]) -> bool;
 type ValidateFn = fn(bytes: &[u8]) -> Result<(), ValidationError>;
 
-
-
 // There are three characteristics that a packet Sequence may exhibit:
 // 1. Reordering of packets relative to each other
 // 2. Reassembly of fragments of a single packet
@@ -208,17 +206,21 @@ pub trait UnboundedSequence: Sequence {
     /// and returns the sequence type as its output.
     ///
     /// This variant of [`set_filter()`](UnboundedSequence::set_filter()) is useful for creating
-    /// [`LayeredSequence`] instances:
-    ///
-    /// ```
-    /// let seq = LayeredSequence::new(Ipv4Sequence::new().with_filter(|ip| !(ip.src() == 0 || ip.dst() == 0)), true)
-    ///         .add_bounded(StcpSequence::new().with_filter(|sctp| sctp.sport() == 4321 && sctp.verify_tag() == 1111));
-    /// ```
+    /// [`LayeredSequence`] instances.
     #[inline]
     fn with_filter<F: Fn(Self::In<'_>) -> bool + 'static>(mut self, filter: Option<F>) -> Self {
         self.set_filter(filter);
         self
     }
+
+    // ```
+    // use pkts::layers::ip::Ipv4Sequence;
+    // use pkts::layers::sctp::SctpSequence;
+    // use pkts::layers::tcp::TcpSequence;
+    //
+    // let seq = LayeredSequence::new(Ipv4Sequence::new().with_filter(|ip| !(ip.src() == 0 || ip.dst() == 0)), true)
+    //         .add_bounded(StcpSequence::new().with_filter(|sctp| sctp.sport() == 4321 && sctp.verify_tag() == 1111));
+    // ```
 }
 
 /// A variation of the `first_mut()` slice method that retrieves the first two

@@ -53,10 +53,7 @@ pub fn get_array<const T: usize>(bytes: &[u8], start: usize) -> Option<&[u8; T]>
 }
 
 #[inline]
-pub fn get_mut_array<const T: usize>(
-    bytes: &mut [u8],
-    start: usize,
-) -> Option<&mut [u8; T]> {
+pub fn get_mut_array<const T: usize>(bytes: &mut [u8], start: usize) -> Option<&mut [u8; T]> {
     bytes.get_mut(start..start + T)?.try_into().ok()
 }
 

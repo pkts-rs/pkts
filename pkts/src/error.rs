@@ -64,7 +64,7 @@ impl SerializationError {
     #[inline]
     pub(crate) fn insufficient_buffer(layer: &'static str) -> Self {
         SerializationError {
-            class: SerializationErrorClass::LengthEncoding,
+            class: SerializationErrorClass::InsufficientBuffer,
             layer,
         }
     }

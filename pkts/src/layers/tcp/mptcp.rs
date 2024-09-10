@@ -1,4 +1,7 @@
-use core::{array, mem, net::{IpAddr, Ipv4Addr, Ipv6Addr}};
+use core::{
+    array, mem,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+};
 
 use bitflags::bitflags;
 
@@ -35,7 +38,10 @@ pub enum Mptcp {
 }
 
 impl Mptcp {
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         match self {
             Mptcp::Capable(o) => o.to_bytes_extended(writable),
             Mptcp::Join(o) => o.to_bytes_extended(writable),
@@ -50,7 +56,6 @@ impl Mptcp {
             Mptcp::Experimetal(o) => o.to_bytes_extended(writable),
         }
     }
-
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
         let subtype = data[3] >> 4;
@@ -94,7 +99,10 @@ pub struct GenericOpt {
 }
 
 impl GenericOpt {
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[(self.subtype << 4) | self.reserved])?;
@@ -187,7 +195,10 @@ impl CapableOpt {
     const DATA_LEN_OFFSET: usize = 20;
     const CHKSUM_OFFSET: usize = 22;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[(self.subtype() << 4) | self.version(), self.flags().bits()])?;
@@ -217,29 +228,37 @@ impl CapableOpt {
         let flags = CapableFlags::from_bits_truncate(data[3]);
 
         let sender_key = if optlen > Self::SENDER_KEY_OFFSET {
-            Some(u64::from_be_bytes(utils::to_array(data, Self::SENDER_KEY_OFFSET).unwrap()))
+            Some(u64::from_be_bytes(
+                utils::to_array(data, Self::SENDER_KEY_OFFSET).unwrap(),
+            ))
         } else {
             None
         };
 
         let receiver_key = if optlen > Self::RECEIVER_KEY_OFFSET {
-            Some(u64::from_be_bytes(utils::to_array(data, Self::RECEIVER_KEY_OFFSET).unwrap()))
+            Some(u64::from_be_bytes(
+                utils::to_array(data, Self::RECEIVER_KEY_OFFSET).unwrap(),
+            ))
         } else {
             None
         };
 
         let data_len = if optlen > Self::DATA_LEN_OFFSET {
-            Some(u16::from_be_bytes(utils::to_array(data, Self::DATA_LEN_OFFSET).unwrap()))
+            Some(u16::from_be_bytes(
+                utils::to_array(data, Self::DATA_LEN_OFFSET).unwrap(),
+            ))
         } else {
             None
         };
 
         let chksum = if optlen > Self::CHKSUM_OFFSET {
-            Some(u16::from_be_bytes(utils::to_array(data, Self::CHKSUM_OFFSET).unwrap()))
+            Some(u16::from_be_bytes(
+                utils::to_array(data, Self::CHKSUM_OFFSET).unwrap(),
+            ))
         } else {
             None
         };
-        
+
         Self {
             flags,
             sender_key,
@@ -349,7 +368,10 @@ impl JoinOpt {
     const RECEIVER_TOKEN_OFFSET: usize = 4;
     const HMAC_OFFSET: usize = 4;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
@@ -362,9 +384,7 @@ impl JoinOpt {
                 writer.write(&synack.sender_hmac)?;
                 writer.write(&synack.sender_rand.to_be_bytes())
             }
-            JoinPayload::Ack(ack) => {
-                writer.write(&ack.sender_hmac)
-            }
+            JoinPayload::Ack(ack) => writer.write(&ack.sender_hmac),
         }
     }
 
@@ -373,8 +393,11 @@ impl JoinOpt {
         let addr_id = data[Self::ADDR_ID_OFFSET];
         let payload = match data[Self::OPTLEN_OFFSET] {
             12 => {
-                let receiver_token = u32::from_be_bytes(utils::to_array(data, Self::RECEIVER_TOKEN_OFFSET).unwrap());
-                let sender_rand = u32::from_be_bytes(utils::to_array(data, Self::RECEIVER_TOKEN_OFFSET + 4).unwrap());
+                let receiver_token =
+                    u32::from_be_bytes(utils::to_array(data, Self::RECEIVER_TOKEN_OFFSET).unwrap());
+                let sender_rand = u32::from_be_bytes(
+                    utils::to_array(data, Self::RECEIVER_TOKEN_OFFSET + 4).unwrap(),
+                );
                 JoinPayload::Syn(JoinSyn {
                     receiver_token,
                     sender_rand,
@@ -382,7 +405,8 @@ impl JoinOpt {
             }
             16 => {
                 let sender_hmac = utils::to_array(data, Self::HMAC_OFFSET).unwrap();
-                let sender_rand = u32::from_be_bytes(utils::to_array(data, Self::HMAC_OFFSET + 8).unwrap());
+                let sender_rand =
+                    u32::from_be_bytes(utils::to_array(data, Self::HMAC_OFFSET + 8).unwrap());
                 JoinPayload::SynAck(JoinSynAck {
                     sender_hmac,
                     sender_rand,
@@ -390,9 +414,7 @@ impl JoinOpt {
             }
             24 => {
                 let sender_hmac = utils::to_array(data, Self::HMAC_OFFSET).unwrap();
-                JoinPayload::Ack(JoinAck {
-                    sender_hmac,
-                })
+                JoinPayload::Ack(JoinAck { sender_hmac })
             }
             _ => panic!(),
         };
@@ -540,7 +562,10 @@ impl DssOpt {
     const FLAGS_OFFSET: usize = 2;
     const ACK_OFFSET: usize = 4;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&((self.subtype() << 4) as u16 | self.flags().bits()).to_be_bytes())?;
@@ -562,7 +587,7 @@ impl DssOpt {
 
             writer.write(&dsn_info.ssn.to_be_bytes())?;
             writer.write(&dsn_info.dll.to_be_bytes())?;
-            
+
             if let Some(chksum) = dsn_info.chksum {
                 writer.write(&chksum.to_be_bytes())?;
             }
@@ -573,9 +598,11 @@ impl DssOpt {
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
         let optlen = data[1] as usize;
-        let flags = DssFlags::from_bits_truncate(u16::from_be_bytes(utils::to_array(data, Self::FLAGS_OFFSET).unwrap()));
+        let flags = DssFlags::from_bits_truncate(u16::from_be_bytes(
+            utils::to_array(data, Self::FLAGS_OFFSET).unwrap(),
+        ));
         let mut idx = Self::ACK_OFFSET;
-        
+
         let ack = if !flags.contains(DssFlags::ACK_PRESENT) {
             None
         } else if flags.contains(DssFlags::ACK_8_OCTETS) {
@@ -629,7 +656,7 @@ impl DssOpt {
             flags,
             ack,
             dsn_info,
-        }
+        };
     }
 
     pub fn byte_len(&self) -> usize {
@@ -761,7 +788,10 @@ impl AddAddrOpt {
     const ADDR_ID_OFFSET: usize = 3;
     const ADDR_OFFSET: usize = 4;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
@@ -779,7 +809,7 @@ impl AddAddrOpt {
             writer.write(&port.to_be_bytes())?;
         }
 
-        if let Some(hmac) =self.hmac {
+        if let Some(hmac) = self.hmac {
             writer.write(&hmac)?;
         }
 
@@ -797,12 +827,27 @@ impl AddAddrOpt {
         }
         addrlen -= addrlen % 4; // Remove optional port
 
-
         let addr = match addrlen {
-            4 => IpAddr::V4(Ipv4Addr::new(data[Self::FLAGS_OFFSET], data[Self::FLAGS_OFFSET + 1], data[Self::FLAGS_OFFSET + 2], data[Self::FLAGS_OFFSET + 3])),
+            4 => IpAddr::V4(Ipv4Addr::new(
+                data[Self::FLAGS_OFFSET],
+                data[Self::FLAGS_OFFSET + 1],
+                data[Self::FLAGS_OFFSET + 2],
+                data[Self::FLAGS_OFFSET + 3],
+            )),
             16 => {
-                let segments: [u16; 8] = array::from_fn(|i| u16::from_be_bytes(utils::to_array(data, Self::ADDR_OFFSET + 2 * i).unwrap()));
-                IpAddr::V6(Ipv6Addr::new(segments[0], segments[1], segments[2], segments[3], segments[4], segments[5], segments[6], segments[7]))
+                let segments: [u16; 8] = array::from_fn(|i| {
+                    u16::from_be_bytes(utils::to_array(data, Self::ADDR_OFFSET + 2 * i).unwrap())
+                });
+                IpAddr::V6(Ipv6Addr::new(
+                    segments[0],
+                    segments[1],
+                    segments[2],
+                    segments[3],
+                    segments[4],
+                    segments[5],
+                    segments[6],
+                    segments[7],
+                ))
             }
             _ => panic!(),
         };
@@ -895,7 +940,10 @@ impl RemoveAddrOpt {
     const FLAGS_OFFSET: usize = 2;
     const ADDR_IDS_OFFSET: usize = 3;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[(self.subtype() << 4) | self.flags().bits()])?;
@@ -907,10 +955,7 @@ impl RemoveAddrOpt {
         let mut addr_ids = Buffer::new();
         addr_ids.append(&data[Self::ADDR_IDS_OFFSET..]);
 
-        Self {
-            flags,
-            addr_ids,
-        }
+        Self { flags, addr_ids }
     }
 
     #[inline]
@@ -943,7 +988,10 @@ impl FallbackOpt {
     const RESERVED_OFFSET: usize = 2;
     const DSN_OFFSET: usize = 4;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
@@ -954,10 +1002,7 @@ impl FallbackOpt {
         let reserved = u16::from_be_bytes(utils::to_array(data, Self::RESERVED_OFFSET).unwrap());
         let dsn = u64::from_be_bytes(utils::to_array(data, Self::DSN_OFFSET).unwrap());
 
-        Self {
-            reserved,
-            dsn,
-        }
+        Self { reserved, dsn }
     }
 
     #[inline]
@@ -1001,7 +1046,10 @@ impl FastCloseOpt {
     const RESERVED_OFFSET: usize = 2;
     const RECEIVER_KEY_OFFSET: usize = 4;
 
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
@@ -1010,7 +1058,8 @@ impl FastCloseOpt {
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
         let reserved = u16::from_be_bytes(utils::to_array(data, Self::RESERVED_OFFSET).unwrap());
-        let receiver_key = u64::from_be_bytes(utils::to_array(data, Self::RECEIVER_KEY_OFFSET).unwrap());
+        let receiver_key =
+            u64::from_be_bytes(utils::to_array(data, Self::RECEIVER_KEY_OFFSET).unwrap());
 
         Self {
             reserved,
@@ -1055,7 +1104,10 @@ pub struct ResetOpt {
 }
 
 impl ResetOpt {
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[self.subtype() | self.flags.bits()])?;
@@ -1066,10 +1118,7 @@ impl ResetOpt {
         let flags = ResetFlags::from_bits_truncate(data[2]);
         let reason = data[3];
 
-        Self {
-            flags,
-            reason,
-        }
+        Self { flags, reason }
     }
 
     pub fn byte_len(&self) -> usize {
@@ -1117,7 +1166,10 @@ pub struct PrioOpt {
 }
 
 impl PrioOpt {
-    pub fn to_bytes_extended(&self, writable: &mut impl IndexedWritable) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended(
+        &self,
+        writable: &mut impl IndexedWritable,
+    ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
         writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write(&[self.subtype() | self.flags.bits()])
@@ -1126,7 +1178,7 @@ impl PrioOpt {
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
         Self {
             flags: PrioFlags::from_bits_truncate(data[2]),
-        }       
+        }
     }
 
     pub fn byte_len(&self) -> usize {

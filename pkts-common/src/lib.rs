@@ -101,12 +101,10 @@ impl<'a> BufferMut<'a> {
         &self.buf[..self.buf_len]
     }
 
-    
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         &mut self.buf[..self.buf_len]
     }
-    
 
     /// Appends the provided bytes to the buffer, panicking if insufficient space is available in
     /// the buffer.
@@ -120,7 +118,10 @@ impl<'a> BufferMut<'a> {
     /// available in the buffer.
     #[inline]
     pub fn append_or<T>(&mut self, bytes: &[u8], error: T) -> Result<(), T> {
-        let buf_slice = self.buf.get_mut(self.buf_len..self.buf_len + bytes.len()).ok_or(error)?;
+        let buf_slice = self
+            .buf
+            .get_mut(self.buf_len..self.buf_len + bytes.len())
+            .ok_or(error)?;
         buf_slice.copy_from_slice(bytes);
         self.buf_len += bytes.len();
         Ok(())
@@ -131,10 +132,10 @@ impl<'a> BufferMut<'a> {
     #[inline]
     pub fn try_append(&mut self, bytes: &[u8]) -> Option<()> {
         if self.remaining() < bytes.len() {
-            return None
+            return None;
         } else {
             self.append(bytes);
-            return Some(())       
+            return Some(());
         }
     }
 

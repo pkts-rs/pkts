@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+pub use pkts_common::{Buffer, BufferMut};
+
 pub use crate::error::{ValidationError, ValidationErrorClass};
 pub use crate::layers::traits::*;
 pub use crate::layers::{Raw, RawRef};

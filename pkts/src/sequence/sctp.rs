@@ -1,4 +1,3 @@
-
 use core::{cmp::Ordering, mem};
 
 #[cfg(feature = "std")]
@@ -523,17 +522,17 @@ struct SctpFragmentEntry {
 // Note: it is the caller's responsibility to ensure that packets are input from the same src/dst port, in the same direction, and from the same stream identifier.
 // The `SctpDefrag` is only responsible for ensuring packets of a stream come in order (unless the unordered bit is set) and are defragmented.
 #[cfg(feature = "alloc")]
-pub struct SctpSequence<const WINDOW: usize = 25> {
+pub struct SctpSequence<const W: usize = 25> {
     filter: Option<Box<PktFilterDynFn>>,
     fragments: BTreeMap<Option<u16>, Vec<SctpFragmentEntry>>,
     stream_seq: Option<u16>,
-    unordered: utils::ArrayRing<Vec<u8>, WINDOW>,
+    unordered: utils::ArrayRing<Vec<u8>, W>,
     out: VecDeque<Vec<u8>>,
     first_retrieved: bool,
 }
 
 #[cfg(feature = "alloc")]
-impl<const WINDOW: usize> SctpSequence<WINDOW> {
+impl<const W: usize> SctpSequence<W> {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         SctpSequence {
@@ -559,7 +558,7 @@ impl<const WINDOW: usize> SctpSequence<WINDOW> {
                 } else {
                     seq + (u16::MAX - base_seq) + 1
                 };
-                if seq_diff < WINDOW as u16 {
+                if seq_diff < W as u16 {
                     self.unordered.insert(data, seq_diff as usize);
                     todo!()
                 }

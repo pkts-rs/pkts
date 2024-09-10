@@ -1,5 +1,9 @@
 # Release History:
 
+* 0.2.0
+  - Split out `rscap` and `pkts` into separate crates
+  - Introduce CI pipeline
+
 * 0.1.3
   - Switched license to MIT/Apache 2.0
   - Additional documentation
