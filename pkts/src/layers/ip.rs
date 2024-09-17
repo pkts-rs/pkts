@@ -12,10 +12,14 @@
 //!
 //!
 
+use core::convert::{TryFrom, TryInto};
 use core::fmt::Debug;
 use core::iter::Iterator;
+#[cfg(all(not(feature = "std"), rustc_1_77))]
 use core::net::{Ipv4Addr, Ipv6Addr};
 use core::{array, cmp, slice};
+#[cfg(feature = "std")]
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use super::sctp::{Sctp, SctpRef};
 use super::tcp::{Tcp, TcpRef};
@@ -449,8 +453,8 @@ pub struct Ipv4 {
     frag_offset: u16,
     ttl: u8,
     chksum: Option<u16>,
-    src: Ipv4Addr,
-    dst: Ipv4Addr,
+    src: u32,
+    dst: u32,
     options: Ipv4Options,
     payload: Option<Box<dyn LayerObject>>,
 }
@@ -675,27 +679,59 @@ impl Ipv4 {
     }
 
     /// The source IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn src(&self) -> Ipv4Addr {
-        self.src
+        self.src.into()
     }
 
     /// Sets the source IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn set_src(&mut self, src: Ipv4Addr) {
-        self.src = src;
+        self.src = src.into();
     }
 
     /// The destination IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn dst(&self) -> Ipv4Addr {
-        self.dst
+        self.dst.into()
     }
 
     /// Sets the destination IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn set_dst(&mut self, dst: Ipv4Addr) {
-        self.dst = dst;
+        self.dst = dst.into();
+    }
+
+    /// The source IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn src_bytes(&self) -> [u8; 4] {
+        self.src.to_be_bytes()
+    }
+
+    /// Sets the source IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn set_src_bytes(&mut self, src: [u8; 4]) {
+        self.src = u32::from_be_bytes(src);
+    }
+
+    /// The destination IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn dst_bytes(&self) -> [u8; 4] {
+        self.dst.to_be_bytes()
+    }
+
+    /// Sets the destination IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn set_dst_bytes(&mut self, dst: [u8; 4]) {
+        self.dst = u32::from_be_bytes(dst);
     }
 
     /// The Ipv4 Options fields of the packet.
@@ -721,8 +757,8 @@ impl FromBytesCurrent for Ipv4 {
             frag_offset: ipv4.frag_offset(),
             ttl: ipv4.ttl(),
             chksum: None,
-            src: ipv4.src(),
-            dst: ipv4.dst(),
+            src: u32::from_be_bytes(ipv4.src_bytes()),
+            dst: u32::from_be_bytes(ipv4.dst_bytes()),
             options: Ipv4Options::from(ipv4.options()),
             payload: None,
         }
@@ -831,8 +867,8 @@ impl ToBytes for Ipv4 {
             })
             .unwrap_or(DATA_PROTO_EXP1)])?; // 0xFD when no payload specified
         writer.write_slice(&self.chksum.unwrap_or(0).to_be_bytes())?;
-        writer.write_slice(&self.src.octets())?;
-        writer.write_slice(&self.dst.octets())?;
+        writer.write_slice(&u32::from(self.src).to_be_bytes())?;
+        writer.write_slice(&u32::from(self.dst).to_be_bytes())?;
         self.options.to_bytes_extended(writer)?;
         if let Some(payload) = self.payload.as_ref() {
             payload.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))?;
@@ -997,15 +1033,27 @@ impl<'a> Ipv4Ref<'a> {
     }
 
     /// The source IP address of the packet.
+    #[cfg(any(rustc_1_77, feature = "std"))]
     #[inline]
     pub fn src(&self) -> Ipv4Addr {
         Ipv4Addr::new(self.data[12], self.data[13], self.data[14], self.data[15])
     }
 
+    /// The source IP address of the packet, in bytes.
+    pub fn src_bytes(&self) -> [u8; 4] {
+        utils::to_array(self.data, 12).unwrap()
+    }
+
     /// The destination IP address of the packet.
+    #[cfg(any(rustc_1_77, feature = "std"))]
     #[inline]
     pub fn dst(&self) -> Ipv4Addr {
         Ipv4Addr::new(self.data[16], self.data[17], self.data[18], self.data[19])
+    }
+
+    /// The destination IP address of the packet, in bytes.
+    pub fn dst_bytes(&self) -> [u8; 4] {
+        utils::to_array(self.data, 12).unwrap()
     }
 
     /// The Ipv4 Options fields of the packet.
@@ -1926,8 +1974,8 @@ pub struct Ipv6 {
     traffic_class: TrafficClass,
     flow_label: FlowLabel,
     hop_limit: u8,
-    src: Ipv6Addr,
-    dst: Ipv6Addr,
+    src: u128,
+    dst: u128,
     payload: Option<Box<dyn LayerObject>>,
 }
 
@@ -1988,21 +2036,55 @@ impl Ipv6 {
     }
 
     /// The source IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn src(&self) -> Ipv6Addr {
-        self.src
+        self.src.into()
     }
 
     /// Sets the source IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn set_src(&mut self, src: Ipv6Addr) {
-        self.src = src;
+        self.src = src.into();
+    }
+
+    /// The destination IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn dst(&self) -> Ipv6Addr {
+        self.dst.into()
     }
 
     /// Sets the destination IP address of the packet.
+    #[cfg(any(feature = "std", rustc_1_77))]
     #[inline]
     pub fn set_dst(&mut self, dst: Ipv6Addr) {
-        self.dst = dst;
+        self.dst = dst.into();
+    }
+
+    /// The source IP address of the packet, in bytes.
+    #[inline]
+    pub fn src_bytes(&self) -> [u8; 16] {
+        self.src.to_be_bytes()
+    }
+
+    /// Sets the source IP address of the packet, in bytes.
+    #[inline]
+    pub fn set_src_bytes(&mut self, src: [u8; 16]) {
+        self.src = u128::from_be_bytes(src);
+    }
+
+    /// The destination IP address of the packet, in bytes.
+    #[inline]
+    pub fn dst_bytes(&self) -> [u8; 16] {
+        self.dst.to_be_bytes()
+    }
+
+    /// Sets the destination IP address of the packet, in bytes.
+    #[inline]
+    pub fn set_dst_bytes(&mut self, dst: [u8; 16]) {
+        self.dst = u128::from_be_bytes(dst);
     }
 }
 
@@ -2014,8 +2096,8 @@ impl FromBytesCurrent for Ipv6 {
             traffic_class: ipv6.traffic_class(),
             flow_label: ipv6.flow_label(),
             hop_limit: ipv6.hop_limit(),
-            src: ipv6.src(),
-            dst: ipv6.dst(),
+            src: u128::from_be_bytes(ipv6.src_bytes()),
+            dst: u128::from_be_bytes(ipv6.dst_bytes()),
             payload: None,
         }
     }
@@ -2114,8 +2196,8 @@ impl ToBytes for Ipv6 {
                 .ok_or(SerializationError::bad_upper_layer(Ipv6::name()))?,
         }])?;
         writer.write_slice(&[self.hop_limit])?;
-        writer.write_slice(&self.src.octets())?;
-        writer.write_slice(&self.dst.octets())?;
+        writer.write_slice(&u128::from(self.src).to_be_bytes())?;
+        writer.write_slice(&u128::from(self.dst).to_be_bytes())?;
         if let Some(p) = self.payload.as_ref() {
             p.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))?;
         }
@@ -2220,6 +2302,7 @@ impl<'a> Ipv6Ref<'a> {
 
     /// The source IP address of the packet.
     #[inline]
+    #[cfg(any(feature = "std", rustc_1_77))]
     pub fn src(&self) -> Ipv6Addr {
         let segments: [u16; 8] = array::from_fn(|i| {
             u16::from_be_bytes(utils::to_array(self.data, 8 + (i * 2)).unwrap())
@@ -2234,6 +2317,12 @@ impl<'a> Ipv6Ref<'a> {
             segments[6],
             segments[7],
         )
+    }
+
+    /// The source IP address of the packet, in bytes.
+    #[inline]
+    pub fn src_bytes(&self) -> [u8; 16] {
+        utils::to_array(self.data, 8).unwrap()
     }
 
     /// The destination IP address of the packet.
@@ -2252,6 +2341,12 @@ impl<'a> Ipv6Ref<'a> {
             segments[6],
             segments[7],
         )
+    }
+
+    /// The destination IP address of the packet, in bytes.
+    #[inline]
+    pub fn dst_bytes(&self) -> [u8; 16] {
+        utils::to_array(self.data, 24).unwrap()
     }
 
     /// The payload of the packet, in raw bytes.

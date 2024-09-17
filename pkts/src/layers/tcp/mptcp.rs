@@ -1,7 +1,9 @@
-use core::{
-    array, mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-};
+use core::convert::{TryFrom, TryInto};
+#[cfg(all(not(feature = "std"), rustc_1_77))]
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use core::{array, mem};
+#[cfg(feature = "std")]
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use bitflags::bitflags;
 

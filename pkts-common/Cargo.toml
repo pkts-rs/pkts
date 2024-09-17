@@ -2,6 +2,7 @@
 name = "pkts-common"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "helper library for shared types/utilities among rscap and pkts"
+rust-version = "1.65"
 license = "MIT OR Apache-2.0"
 version = "0.2.0"
 edition = "2021"

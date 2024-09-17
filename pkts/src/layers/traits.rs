@@ -12,6 +12,7 @@
 //!
 //!
 
+use core::convert::{TryFrom, TryInto};
 use core::fmt::Debug;
 
 use super::dev_traits::*;

@@ -2,12 +2,15 @@
 name = "pkts"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 description = "tools for building, inspecting and modifying network protocol packets"
-# 1.65 - GATs stabilized (required for some `Sequence` types)
-# 1.77 - `core::net` stabilized (needed for `no-std` IpAddr types)
-rust-version = "1.77"
+# 1.56 - Rust edition 2021 released; `bitflags`/`quote`/`proc_macro2` MSRV
+# 1.61 - `syn` MSRV
+# 1.63 - `array::from_fn` stabilized
+# 1.65 - GATs stabilized (required for some `Sequence` types); `core::CStr` stabilized (our MSRV)
+# 1.77 - `core::net` stabilized (needed for `no-std` `IpAddr` types)--handled by cfg
+rust-version = "1.65"
 license = "MIT OR Apache-2.0"
 version = "0.2.0"
-edition = "2021"
+edition = "2018"
 repository = "https://github.com/pkts-rs/pkts"
 keywords = ["packets", "network", "scapy", "parsing"]
 categories = ["network-programming", "encoding", "parsing"]

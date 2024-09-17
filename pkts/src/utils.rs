@@ -17,6 +17,8 @@
 
 use core::{array, default, mem};
 
+use core::convert::TryInto;
+
 //#[cfg(all(not(feature = "std"), feature = "alloc"))]
 //use alloc::vec::Vec;
 
