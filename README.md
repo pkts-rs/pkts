@@ -1,13 +1,13 @@
 # pkts
 
-[![CI Badge]][CI Status] [![Latest Version]][crates.io] [![Documentation]][docs.rs] [![rscap: rustc 1.65+]][Rust 1.65]
+[![Latest Version]][crates.io] [![GHA Status]][GitHub Actions] [![Documentation]][docs.rs] [![pkts: rustc 1.65+]][Rust 1.65]
 
 [Latest Version]: https://img.shields.io/crates/v/pkts.svg
-[CI Badge]: https://github.com/pkts-rs/pkts/actions/workflows/full_ci.yml/badge.svg
-[CI Status]: https://github.com/pkts-rs/pkts/actions/workflows/full_ci.yml
+[GitHub Actions]: https://github.com/pkts-rs/pkts/actions
+[GHA Status]: https://github.com/pkts-rs/pkts/actions/workflows/full_ci.yaml/badge.svg
 [crates.io]: https://crates.io/crates/pkts
-[rscap: rustc 1.66+]: https://img.shields.io/badge/MSRV-rustc_1.65+-blue.svg
-[Rust 1.66]: https://blog.rust-lang.org/2022/11/03/Rust-1.65.0.html
+[pkts: rustc 1.65+]: https://img.shields.io/badge/MSRV-rustc_1.65+-blue.svg
+[Rust 1.65]: https://blog.rust-lang.org/2022/11/03/Rust-1.65.0.html
 [Documentation]: https://docs.rs/pkts/badge.svg
 [docs.rs]: https://docs.rs/pkts/
 
