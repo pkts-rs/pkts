@@ -12,15 +12,22 @@
 //!
 //!
 
-use core::convert::{TryFrom, TryInto};
+#[cfg(feature = "alloc")]
 use core::slice;
 
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 use crate::layers::dev_traits::*;
-use crate::layers::ip::{Ipv4, Ipv4Ref, Ipv6, Ipv6Ref};
+#[cfg(feature = "alloc")]
+use crate::layers::ip::Ipv4;
+use crate::layers::ip::{Ipv4Ref, Ipv6Ref};
 use crate::layers::traits::*;
-use crate::layers::{Raw, RawRef};
+#[cfg(feature = "alloc")]
+use crate::layers::Raw;
+use crate::layers::RawRef;
+#[cfg(feature = "alloc")]
 use crate::writer::PacketWriter;
 use crate::{error::*, utils};
 
@@ -30,6 +37,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 const ETH_PROTOCOL_IP: u16 = 0x0800;
+#[cfg(feature = "alloc")]
 const ETH_PROTOCOL_EXPERIMENTAL: u16 = 0x88B5;
 
 /// A basic 802.3 Ethernet frame.
@@ -41,12 +49,14 @@ const ETH_PROTOCOL_EXPERIMENTAL: u16 = 0x88B5;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(EtherMetadata)]
 #[ref_type(EtherRef)]
+#[cfg(feature = "alloc")]
 pub struct Ether {
     src: [u8; 6],
     dst: [u8; 6],
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Ether {
     /// The source MAC address contained within the Ethernet frame.
     #[inline]
@@ -80,6 +90,7 @@ impl Ether {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for Ether {
     fn payload_from_bytes_unchecked_default(&mut self, bytes: &[u8]) {
         let ether = EtherRef::from_bytes_unchecked(bytes);
@@ -107,6 +118,7 @@ impl FromBytesCurrent for Ether {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Ether {
     #[inline]
     fn len(&self) -> usize {
@@ -114,6 +126,7 @@ impl LayerLength for Ether {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Ether {
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool {
         payload
@@ -155,6 +168,7 @@ impl LayerObject for Ether {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Ether {
     fn to_bytes_checksummed(
         &self,
@@ -246,7 +260,7 @@ impl<'a> LayerOffset for EtherRef<'a> {
         match eth_type {
             ETH_PROTOCOL_IP => match bytes[14] >> 4 {
                 0x04 => {
-                    if layer_type == Ipv4::layer_id() {
+                    if layer_type == Ipv4Ref::layer_id() {
                         Some(14)
                     } else {
                         Ipv4Ref::payload_byte_index_default(&bytes[14..], layer_type)
@@ -254,7 +268,7 @@ impl<'a> LayerOffset for EtherRef<'a> {
                     }
                 }
                 0x06 => {
-                    if layer_type == Ipv6::layer_id() {
+                    if layer_type == Ipv6Ref::layer_id() {
                         Some(14)
                     } else {
                         Ipv6Ref::payload_byte_index_default(&bytes[14..], layer_type)
@@ -273,7 +287,7 @@ impl<'a> Validate for EtherRef<'a> {
     fn validate_current_layer(curr_layer: &[u8]) -> Result<(), ValidationError> {
         if curr_layer.len() < 14 {
             Err(ValidationError {
-                layer: Ether::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in Ether layer for header fields",

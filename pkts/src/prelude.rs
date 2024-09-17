@@ -12,5 +12,9 @@ pub use pkts_common::{Buffer, BufferMut};
 
 pub use crate::error::{SerializationError, ValidationError, ValidationErrorClass};
 pub use crate::layers::traits::*;
-pub use crate::layers::{Raw, RawRef};
+#[cfg(feature = "alloc")]
+pub use crate::layers::Raw;
+pub use crate::layers::RawRef;
+
+#[cfg(feature = "alloc")]
 pub use crate::{parse_layers, parse_layers_unchecked};

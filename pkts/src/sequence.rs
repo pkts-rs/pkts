@@ -54,9 +54,11 @@
 pub mod ipv4;
 pub mod sctp;
 
+#[cfg(feature = "alloc")]
 use core::marker::PhantomData;
 
 use crate::error::*;
+#[cfg(feature = "alloc")]
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 
@@ -236,12 +238,14 @@ fn first_two_mut<T>(slice: &mut [T]) -> Option<(&mut T, &mut T)> {
     None
 }
 
+#[cfg(feature = "alloc")]
 struct SequenceLayer {
     layer: Box<dyn SequenceObject>,
     validation: ValidateFn,
     bytes: Option<Vec<u8>>,
 }
 
+#[cfg(feature = "alloc")]
 impl SequenceLayer {
     fn new(
         upper_layer: Box<dyn SequenceObject>,

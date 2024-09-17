@@ -15,10 +15,15 @@
 
 pub mod mptcp;
 
-use core::convert::{TryFrom, TryInto};
-use core::{cmp, mem, slice};
+use core::convert::TryFrom;
+#[cfg(feature = "alloc")]
+use core::convert::TryInto;
+#[cfg(feature = "alloc")]
+use core::slice;
+use core::{cmp, mem};
 
 use crate::layers::dev_traits::*;
+#[cfg(feature = "alloc")]
 use crate::layers::ip::{Ipv4, Ipv6, DATA_PROTO_TCP};
 use crate::layers::traits::*;
 use crate::layers::*;
@@ -28,7 +33,9 @@ use crate::writer::{PacketWritable, PacketWriter};
 use bitflags::bitflags;
 
 use pkts_common::{Buffer, BufferMut};
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -76,6 +83,7 @@ pub const TCP_OPT_KIND_MPTCP: u8 = 30;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(TcpMetadata)]
 #[ref_type(TcpRef)]
+#[cfg(feature = "alloc")]
 pub struct Tcp {
     sport: u16,
     dport: u16,
@@ -89,6 +97,7 @@ pub struct Tcp {
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Tcp {
     /// The source port of the TCP packet.
     #[inline]
@@ -240,6 +249,7 @@ impl Tcp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Tcp {
     #[inline]
     fn len(&self) -> usize {
@@ -251,6 +261,7 @@ impl LayerLength for Tcp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Tcp {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -288,6 +299,7 @@ impl LayerObject for Tcp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Tcp {
     fn to_bytes_checksummed(
         &self,
@@ -358,6 +370,7 @@ impl ToBytes for Tcp {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for Tcp {
     #[inline]
     fn from_bytes_current_layer_unchecked(bytes: &[u8]) -> Self {
@@ -500,7 +513,7 @@ impl<'a> FromBytesRef<'a> for TcpRef<'a> {
 impl LayerOffset for TcpRef<'_> {
     fn payload_byte_index_default(bytes: &[u8], layer_type: LayerId) -> Option<usize> {
         let tcp = TcpRef::from_bytes_unchecked(bytes);
-        if layer_type == Raw::layer_id() {
+        if layer_type == RawRef::layer_id() {
             Some(cmp::max(5, tcp.data_offset()) * 4)
         } else {
             None
@@ -513,7 +526,7 @@ impl Validate for TcpRef<'_> {
         let header_len = match curr_layer.get(12) {
             None => {
                 return Err(ValidationError {
-                    layer: Tcp::name(),
+                    layer: Self::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason:
@@ -525,7 +538,7 @@ impl Validate for TcpRef<'_> {
 
         if curr_layer.len() < header_len {
             return Err(ValidationError {
-                layer: Tcp::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes for TCP packet header",
@@ -535,7 +548,7 @@ impl Validate for TcpRef<'_> {
         if header_len < 20 {
             // Header length field must be at least 5 (so that corresponding header length is min required 20 bytes)
             return Err(ValidationError {
-                layer: Tcp::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason:
@@ -677,7 +690,7 @@ impl<'a> TcpBuilder<'a, TcpBuildSrcPort> {
             if self.data.remaining() >= mem::size_of::<u16>() {
                 self.data.append(&sport.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -698,7 +711,7 @@ impl<'a> TcpBuilder<'a, TcpBuildDstPort> {
             if self.data.remaining() >= mem::size_of::<u16>() {
                 self.data.append(&dport.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -719,7 +732,7 @@ impl<'a> TcpBuilder<'a, TcpBuildSeq> {
             if self.data.remaining() >= mem::size_of::<u32>() {
                 self.data.append(&seq.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -739,7 +752,7 @@ impl<'a> TcpBuilder<'a, TcpBuildAck> {
             if self.data.remaining() >= mem::size_of::<u32>() {
                 self.data.append(&ack.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -759,7 +772,7 @@ impl<'a> TcpBuilder<'a, TcpBuildFlags> {
             if self.data.remaining() >= mem::size_of::<u32>() {
                 self.data.append(&flags.bits().to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -779,7 +792,7 @@ impl<'a> TcpBuilder<'a, TcpBuildWindowSize> {
             if self.data.remaining() >= mem::size_of::<u16>() {
                 self.data.append(&window.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -799,7 +812,7 @@ impl<'a> TcpBuilder<'a, TcpBuildChksum> {
             if self.data.remaining() >= mem::size_of::<u16>() {
                 self.data.append(&chksum.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
             }
         }
 
@@ -837,12 +850,12 @@ impl<'a> TcpBuilder<'a, TcpBuildOptsPayload> {
             }
 
             if self.data.remaining() < data.len() {
-                self.error = Some(SerializationError::insufficient_buffer(Tcp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(TcpRef::name()));
                 break 'insert_data;
             }
 
             let Ok(data_len) = u16::try_from(data.len() + 8) else {
-                self.error = Some(SerializationError::length_encoding(Tcp::name()));
+                self.error = Some(SerializationError::length_encoding(TcpRef::name()));
                 break 'insert_data;
             };
 
@@ -885,7 +898,7 @@ impl<'a> TcpBuilder<'a, TcpBuildOptsPayload> {
                             [self.layer_start + 4..self.layer_start + 6]
                             .copy_from_slice(&data_len.to_be_bytes()),
                         Err(_) => {
-                            self.error = Some(SerializationError::length_encoding(Tcp::name()))
+                            self.error = Some(SerializationError::length_encoding(TcpRef::name()))
                         }
                     }
                     data = new_data;
@@ -956,8 +969,10 @@ impl From<u16> for TcpFlags {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct TcpOptions(Vec<TcpOption>);
 
+#[cfg(feature = "alloc")]
 impl TcpOptions {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -1066,7 +1081,7 @@ impl<'a> TcpOptionsRef<'a> {
 
         if bytes.len() % 4 != 0 {
             return Err(ValidationError {
-                layer: Tcp::name(),
+                layer: TcpRef::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "TCP Options data length must be a multiple of 4",
@@ -1079,7 +1094,7 @@ impl<'a> TcpOptionsRef<'a> {
                     for padding_byte in &bytes[1..] {
                         if *padding_byte != 0 {
                             return Err(ValidationError {
-                                layer: Tcp::name(),
+                                layer: TcpRef::name(),
                                 class: ValidationErrorClass::UnusualPadding,
                                 #[cfg(feature = "error_string")]
                                 reason: "TCP option padding had non-zero value",
@@ -1093,7 +1108,7 @@ impl<'a> TcpOptionsRef<'a> {
                 _ => match bytes.get(1) {
                     None => {
                         return Err(ValidationError {
-                            layer: Tcp::name(),
+                            layer: TcpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason:
@@ -1102,7 +1117,7 @@ impl<'a> TcpOptionsRef<'a> {
                     }
                     Some(0..=1) => {
                         return Err(ValidationError {
-                            layer: Tcp::name(),
+                            layer: TcpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason: "TCP option length was less than minimum required",
@@ -1111,7 +1126,7 @@ impl<'a> TcpOptionsRef<'a> {
                     Some(&len) => match bytes.get(len as usize..) {
                         Some(remaining) => bytes = remaining,
                         None => return Err(ValidationError {
-                            layer: Tcp::name(),
+                            layer: TcpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason:
@@ -1245,7 +1260,7 @@ impl TcpOption {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
 
         match self {
             Self::Eool | Self::Nop => writer.write_slice(&[0]),
@@ -1266,7 +1281,7 @@ impl TcpOption {
     pub fn validate(data: &[u8]) -> Result<(), ValidationError> {
         let Some(&kind) = data.get(0) else {
             return Err(ValidationError {
-                layer: Tcp::name(),
+                layer: TcpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in TCP option for `kind` field",
@@ -1277,8 +1292,9 @@ impl TcpOption {
             TCP_OPT_KIND_EOOL => {
                 if data.len() > 1 {
                     Err(ValidationError {
-                        layer: Tcp::name(),
+                        layer: TcpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(data.len() - 1),
+                        #[cfg(feature = "error_string")]
                         reason: "trailing bytes after TCP EOOL Option",
                     })
                 } else {
@@ -1288,8 +1304,9 @@ impl TcpOption {
             TCP_OPT_KIND_NOP => {
                 if data.len() > 1 {
                     Err(ValidationError {
-                        layer: Tcp::name(),
+                        layer: TcpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(data.len() - 1),
+                        #[cfg(feature = "error_string")]
                         reason: "trailing bytes after TCP NOP Option",
                     })
                 } else {
@@ -1358,7 +1375,7 @@ impl TcpOptionMss {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MSS, self.byte_len() as u8])?;
         writer.write_slice(&self.0.to_be_bytes())
     }
@@ -1392,7 +1409,7 @@ impl TcpOptionWscale {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_WSCALE, self.byte_len() as u8])?;
         writer.write_slice(&[self.0])
     }
@@ -1428,7 +1445,7 @@ impl TcpOptionSack {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_SACK, self.byte_len() as u8])?;
         for block in self.blocks_acked.as_slice() {
             writer.write_slice(&block.0.to_be_bytes())?;
@@ -1472,7 +1489,7 @@ impl TcpOptionTimestamp {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_TIMESTAMP, self.byte_len() as u8])?;
         writer.write_slice(&self.ts.to_be_bytes())?;
         writer.write_slice(&self.prev_ts.to_be_bytes())
@@ -1502,7 +1519,7 @@ impl TcpOptionMd5 {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MD5, self.byte_len() as u8])?;
         writer.write_slice(&self.digest)
     }
@@ -1537,7 +1554,7 @@ impl TcpOptionUserTimeout {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_USER_TIMEOUT, self.byte_len() as u8])?;
 
         let optval = self.timeout
@@ -1608,7 +1625,7 @@ impl TcpOptionAuthentication {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_AUTHENTICATION, self.byte_len() as u8])?;
         writer.write_slice(&[self.key_id, self.next_key_id])?;
         writer.write_slice(self.mac.as_slice())
@@ -1675,7 +1692,7 @@ impl TcpOptionUnknown {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[self.kind, self.byte_len() as u8])?;
         writer.write_slice(self.value.as_slice())
     }
@@ -1695,7 +1712,7 @@ impl TcpOptionUnknown {
     pub fn validate(data: &[u8]) -> Result<(), ValidationError> {
         let Some(&_optlen) = data.get(1) else {
             return Err(ValidationError {
-                layer: Tcp::name(),
+                layer: TcpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in TCP option for `length` field",
@@ -1722,7 +1739,7 @@ impl TcpOptionPadding {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(self.padding.as_slice())
     }
 

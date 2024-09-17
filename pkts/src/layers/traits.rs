@@ -12,11 +12,12 @@
 //!
 //!
 
-use core::convert::{TryFrom, TryInto};
+#[cfg(feature = "alloc")]
 use core::fmt::Debug;
 
 use super::dev_traits::*;
 use crate::error::*;
+#[cfg(feature = "alloc")]
 use crate::writer::PacketWriter;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -42,6 +43,7 @@ pub trait LayerLength {
 }
 
 /// A trait for serializing a [`Layer`] type into its binary representation.
+#[cfg(feature = "alloc")]
 pub trait ToBytes: BaseLayer {
     /// Appends the layer's byte representation to the given byte vector and
     /// calculates the checksum of the given layer if needed.
@@ -66,6 +68,7 @@ pub trait ToBytes: BaseLayer {
 
 /// An object-safe subtrait of [`Layer`], suitable for internal operations involving
 /// generic layer payloads.
+#[cfg(feature = "alloc")]
 pub trait LayerObject: AsAny + Debug + ToBytes {
     /// Determines whether `payload` can be used as a payload for the layer.
     #[inline]
@@ -196,6 +199,7 @@ pub trait LayerObject: AsAny + Debug + ToBytes {
 
 /// Recursively searches through tree branches for a certain `Layer` type up to a given depth.
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 fn get_layer_tree<L: LayerObject>(
     layer: &dyn LayerObject,
     mut n: usize,
@@ -225,6 +229,7 @@ fn get_layer_tree<L: LayerObject>(
 
 /// Recursively searches through tree branch depths starting from the root of the tree,
 /// using `get_layer_tree` with incrementally increasing depths.
+#[cfg(feature = "alloc")]
 fn get_layer_bfs<L: LayerObject>(layer: &dyn LayerObject, n: usize, depth: usize) -> Option<&L> {
     // This first `get_layer_bfs()` call is only necessary because the borrow checker
     // rejects any attempt at a `match` :(. Remove once Polonius is integrated into Rust...
@@ -239,6 +244,7 @@ fn get_layer_bfs<L: LayerObject>(layer: &dyn LayerObject, n: usize, depth: usize
 
 /// Recursively walks through the chain of `Layer`s until it becomes a tree, then calls
 /// `get_layer_bfs`
+#[cfg(feature = "alloc")]
 fn get_layer_chain<L: LayerObject>(layer: &dyn LayerObject, mut n: usize) -> Option<&L> {
     if layer.as_any().downcast_ref::<L>().is_some() {
         match n.checked_sub(1) {
@@ -255,6 +261,7 @@ fn get_layer_chain<L: LayerObject>(layer: &dyn LayerObject, mut n: usize) -> Opt
 }
 
 /// Base function to walk through `Layer`s.
+#[cfg(feature = "alloc")]
 fn get_layer_base<I: IndexLayer, L: LayerObject>(layer: &I, mut n: usize) -> Option<&L> {
     if layer.as_any().downcast_ref::<L>().is_some() {
         match n.checked_sub(1) {
@@ -272,6 +279,7 @@ fn get_layer_base<I: IndexLayer, L: LayerObject>(layer: &I, mut n: usize) -> Opt
 
 /// Recursively searches through tree branches for a certain `Layer` type up to a given depth.
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 fn get_layer_mut_tree<L: LayerObject>(
     layer: &mut dyn LayerObject,
     mut n: usize,
@@ -301,6 +309,7 @@ fn get_layer_mut_tree<L: LayerObject>(
 
 /// Recursively searches through tree branch depths starting from the root of the tree,
 /// using `get_layer_mut_tree` with incrementally increasing depths.
+#[cfg(feature = "alloc")]
 fn get_layer_mut_bfs<L: LayerObject>(
     layer: &mut dyn LayerObject,
     n: usize,
@@ -320,6 +329,7 @@ fn get_layer_mut_bfs<L: LayerObject>(
 
 /// Recursively walks through the chain of `Layer`s until it becomes a tree, then calls
 /// `get_layer_mut_bfs`
+#[cfg(feature = "alloc")]
 fn get_layer_mut_chain<L: LayerObject>(
     layer: &mut dyn LayerObject,
     mut n: usize,
@@ -339,6 +349,7 @@ fn get_layer_mut_chain<L: LayerObject>(
 }
 
 /// Base function to walk through `Layer`s.
+#[cfg(feature = "alloc")]
 fn get_layer_mut_base<I: IndexLayer, L: LayerObject>(
     layer: &mut I,
     mut n: usize,
@@ -358,6 +369,7 @@ fn get_layer_mut_base<I: IndexLayer, L: LayerObject>(
 }
 
 /// A trait for indexing into sublayers of a [`Layer`] type.
+#[cfg(feature = "alloc")]
 pub trait IndexLayer: LayerObject + Sized {
     /// Retrieves a reference to the first sublayer of type `T`, if such a sublayer exists.
     ///
@@ -485,6 +497,7 @@ pub trait IndexLayer: LayerObject + Sized {
 /// byte slice--all of its internal types are owned by the layer. Individual data fields can be
 /// modified or replaced in a simple and type-safe manner, and a packet comprising several distinct
 /// layers can be crafted using methods related to this type.
+#[cfg(feature = "alloc")]
 pub trait Layer: IndexLayer + LayerName + LayerObject {
     /*
     /// Determines whether a given new layer can be appended to an existing one.
@@ -615,8 +628,14 @@ pub trait IndexLayerRef<'a>: LayerOffset + BaseLayer {
 /// This general layer type references an immutable byte slice, and is best suited for efficiently
 /// retrieving individual layer fields or payload data from a given packet. This type can be easily
 /// converted into its corresponding [`Layer`] type if desired.
+#[cfg(feature = "alloc")]
 pub trait LayerRef<'a>:
     LayerIdentifier + LayerName + IndexLayerRef<'a> + ToLayer + Copy + Into<&'a [u8]>
+{
+}
+#[cfg(not(feature = "alloc"))]
+pub trait LayerRef<'a>:
+    LayerIdentifier + LayerName + IndexLayerRef<'a> + Copy + Into<&'a [u8]>
 {
 }
 
@@ -751,6 +770,7 @@ pub trait FromBytesRef<'a>: Sized + Validate + StatelessLayer {
 
 /// A trait for creating an owned layer type [`Layer`] from an instance of a protocol layer
 /// (a [`Layer`] or [`LayerRef`]).
+#[cfg(feature = "alloc")]
 pub trait ToLayer {
     type Owned: LayerObject;
 
@@ -758,6 +778,7 @@ pub trait ToLayer {
     fn to_layer(&self) -> Self::Owned;
 }
 
+#[cfg(feature = "alloc")]
 impl<T: LayerObject + Clone> ToLayer for T {
     type Owned = Self;
     #[inline]
@@ -826,6 +847,7 @@ macro_rules! parse_layers {
 /// Parses bytes into a specified sequence of [`Layer`]s, `panic()`ing on error.
 ///
 /// # Panic
+#[cfg(any(feature = "alloc", feature = "std"))]
 #[macro_export]
 macro_rules! parse_layers_unchecked {
     ($bytes:expr, $first:ty, $($next:tt),+) => {{

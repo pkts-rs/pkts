@@ -17,24 +17,38 @@ use core::fmt::Debug;
 use core::iter::Iterator;
 #[cfg(all(not(feature = "std"), rustc_1_77))]
 use core::net::{Ipv4Addr, Ipv6Addr};
-use core::{array, cmp, slice};
+#[cfg(feature = "alloc")]
+use core::slice;
+use core::{array, cmp};
 #[cfg(feature = "std")]
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use super::sctp::{Sctp, SctpRef};
-use super::tcp::{Tcp, TcpRef};
-use super::udp::{Udp, UdpRef};
-use super::{Raw, RawRef};
+#[cfg(feature = "alloc")]
+use super::sctp::Sctp;
+#[cfg(feature = "alloc")]
+use super::tcp::Tcp;
+#[cfg(feature = "alloc")]
+use super::udp::Udp;
+#[cfg(feature = "alloc")]
+use super::Raw;
+
+use super::sctp::SctpRef;
+use super::tcp::TcpRef;
+use super::udp::UdpRef;
+use super::RawRef;
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+#[cfg(feature = "alloc")]
 use crate::writer::{PacketWritable, PacketWriter};
 use crate::{error::*, utils};
 
 use bitflags::bitflags;
 
 use pkts_common::Buffer;
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -444,6 +458,7 @@ pub const OPT_CLASS_RESERVED3: u8 = 3;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(Ipv4Metadata)]
 #[ref_type(Ipv4Ref)]
+#[cfg(feature = "alloc")]
 pub struct Ipv4 {
     // version, ihl, length, protocol, and checksum all calculated dynamically
     dscp: DiffServ, // also known as ToS
@@ -459,6 +474,7 @@ pub struct Ipv4 {
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Ipv4 {
     /// The Internet Header Length (IHL) of the packet.
     ///
@@ -745,6 +761,7 @@ impl Ipv4 {
     }
 }
 
+#[cfg(feature = "alloc")]
 #[doc(hidden)]
 impl FromBytesCurrent for Ipv4 {
     fn from_bytes_current_layer_unchecked(bytes: &[u8]) -> Self {
@@ -780,6 +797,7 @@ impl FromBytesCurrent for Ipv4 {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Ipv4 {
     /// The total length (in bytes) of the Ipv4 header and payload.
     fn len(&self) -> usize {
@@ -791,6 +809,7 @@ impl LayerLength for Ipv4 {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Ipv4 {
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool {
         payload
@@ -831,6 +850,7 @@ impl LayerObject for Ipv4 {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Ipv4 {
     fn to_bytes_checksummed(
         &self,
@@ -1088,7 +1108,7 @@ impl LayerOffset for Ipv4Ref<'_> {
 
         match bytes.get(9).copied() {
             Some(DATA_PROTO_TCP) => {
-                if layer_type == Tcp::layer_id() {
+                if layer_type == TcpRef::layer_id() {
                     Some(ihl)
                 } else {
                     TcpRef::payload_byte_index_default(&bytes[ihl..], layer_type)
@@ -1096,7 +1116,7 @@ impl LayerOffset for Ipv4Ref<'_> {
                 }
             }
             Some(DATA_PROTO_UDP) => {
-                if layer_type == Udp::layer_id() {
+                if layer_type == UdpRef::layer_id() {
                     Some(ihl)
                 } else {
                     UdpRef::payload_byte_index_default(&bytes[ihl..], layer_type)
@@ -1104,7 +1124,7 @@ impl LayerOffset for Ipv4Ref<'_> {
                 }
             }
             Some(DATA_PROTO_SCTP) => {
-                if layer_type == Sctp::layer_id() {
+                if layer_type == SctpRef::layer_id() {
                     Some(ihl)
                 } else {
                     SctpRef::payload_byte_index_default(&bytes[ihl..], layer_type)
@@ -1112,7 +1132,7 @@ impl LayerOffset for Ipv4Ref<'_> {
                 }
             }
             _ => {
-                if layer_type == Raw::layer_id() {
+                if layer_type == RawRef::layer_id() {
                     Some(ihl)
                 } else {
                     None
@@ -1127,7 +1147,7 @@ impl Validate for Ipv4Ref<'_> {
         let (version, ihl) =
             match curr_layer.first() {
                 None => return Err(ValidationError {
-                    layer: Ipv4::name(),
+                    layer: Self::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason:
@@ -1142,7 +1162,7 @@ impl Validate for Ipv4Ref<'_> {
         {
             None => {
                 return Err(ValidationError {
-                    layer: Ipv4::name(),
+                    layer: Self::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason:
@@ -1154,7 +1174,7 @@ impl Validate for Ipv4Ref<'_> {
 
         if total_length > curr_layer.len() {
             return Err(ValidationError {
-                layer: Ipv4::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "total packet length reported in Ipv4 header exceeded the available bytes",
@@ -1165,7 +1185,7 @@ impl Validate for Ipv4Ref<'_> {
         if version != 4 {
             // Version number not 4 (required for Ipv4)
             return Err(ValidationError {
-                layer: Ipv4::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "version number of Ipv4 header was not equal to 0x04",
@@ -1175,7 +1195,7 @@ impl Validate for Ipv4Ref<'_> {
         if ihl < 20 {
             // Header length field must be at least 5 (so that corresponding header length is min required 20 bytes)
             return Err(ValidationError {
-                layer: Ipv4Ref::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "invalid Ipv4 header length value (IHL must be a value of 5 or more)",
@@ -1329,11 +1349,13 @@ impl From<u8> for Ipv4Flags {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct Ipv4Options {
     options: Option<Vec<Ipv4Option>>,
     padding: Option<Vec<u8>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Ipv4Options {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
         Self::validate(bytes)?;
@@ -1408,6 +1430,7 @@ impl Ipv4Options {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&Ipv4OptionsRef<'_>> for Ipv4Options {
     fn from(value: &Ipv4OptionsRef<'_>) -> Self {
         let (options, padding) = if value.iter().next().is_none() {
@@ -1428,6 +1451,7 @@ impl From<&Ipv4OptionsRef<'_>> for Ipv4Options {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<Ipv4OptionsRef<'_>> for Ipv4Options {
     fn from(value: Ipv4OptionsRef<'_>) -> Self {
         Self::from(&value)
@@ -1458,7 +1482,7 @@ impl<'a> Ipv4OptionsRef<'a> {
 
         if bytes.len() % 4 != 0 {
             return Err(ValidationError {
-                layer: Ipv4::name(),
+                layer: Ipv4Ref::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "Ipv4 Options data length must be a multiple of 4",
@@ -1471,7 +1495,7 @@ impl<'a> Ipv4OptionsRef<'a> {
                 1 => bytes = &bytes[1..],
                 _ => match bytes.get(1) {
                     Some(0..=1) => return Err(ValidationError {
-                        layer: Ipv4::name(),
+                        layer: Ipv4Ref::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "IPv4 option length field contained too small a value",
@@ -1480,7 +1504,7 @@ impl<'a> Ipv4OptionsRef<'a> {
                         match bytes.get(len as usize..) {
                             Some(remaining) => bytes = remaining,
                             None => return Err(ValidationError {
-                                layer: Ipv4::name(),
+                                layer: Ipv4Ref::name(),
                                 class: ValidationErrorClass::InvalidValue,
                                 #[cfg(feature = "error_string")]
                                 reason: "truncated IPv4 option field in options--missing part of option data",
@@ -1488,7 +1512,7 @@ impl<'a> Ipv4OptionsRef<'a> {
                         }
                     }
                     None => return Err(ValidationError {
-                        layer: Ipv4::name(),
+                        layer: Ipv4Ref::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "truncated IPv4 option found in options--missing option length field",
@@ -1669,11 +1693,13 @@ impl<'a, const N: usize> Ipv4OptionsBuilder<'a, N> {
 
 // EOOL and NOP must have a size of 0
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct Ipv4Option {
     option_type: u8,
     value: Option<Vec<u8>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Ipv4Option {
     pub fn to_bytes_extended<T: PacketWritable>(
         &self,
@@ -1699,9 +1725,7 @@ impl Ipv4Option {
         self.to_bytes_extended(&mut writer)?;
         Ok(v)
     }
-}
 
-impl Ipv4Option {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
         Self::validate(bytes)?;
@@ -1759,6 +1783,7 @@ impl Ipv4Option {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&Ipv4OptionRef<'_>> for Ipv4Option {
     fn from(ipv4_option: &Ipv4OptionRef<'_>) -> Self {
         Ipv4Option {
@@ -1771,6 +1796,7 @@ impl From<&Ipv4OptionRef<'_>> for Ipv4Option {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<Ipv4OptionRef<'_>> for Ipv4Option {
     #[inline]
     fn from(ipv4_option: Ipv4OptionRef<'_>) -> Self {
@@ -1800,7 +1826,7 @@ impl<'a> Ipv4OptionRef<'a> {
                 Ok(())
             } else {
                 Err(ValidationError {
-                    layer: Ipv4::name(),
+                    layer: Ipv4Ref::name(),
                     class: ValidationErrorClass::ExcessBytes(bytes.len() - 1),
                     #[cfg(feature = "error_string")]
                     reason: "excess bytes at end of single-byte IPv4 option"
@@ -1810,27 +1836,27 @@ impl<'a> Ipv4OptionRef<'a> {
                 Some(&len @ 2..) if bytes.len() >= len as usize => match bytes.len().checked_sub(len as usize) {
                     Some(0) => Ok(()),
                     Some(remaining) => Err(ValidationError {
-                        layer: Ipv4::name(),
+                        layer: Ipv4Ref::name(),
                         class: ValidationErrorClass::ExcessBytes(remaining),
                         #[cfg(feature = "error_string")]
                         reason: "excess bytes at end of sized IPv4 option",
                     }),
                     None => Err(ValidationError {
-                        layer: Ipv4::name(),
+                        layer: Ipv4Ref::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "length of IPv4 Option data exceeded available bytes"
                     }),
                 },
                 _ => Err(ValidationError {
-                    layer: Ipv4::name(),
+                    layer: Ipv4Ref::name(),
                     class: ValidationErrorClass::InvalidValue,
                     #[cfg(feature = "error_string")]
                     reason: "insufficient bytes available to read IPv4 Option--missing length byte field"
                 }),
             },
             None => Err(ValidationError {
-                layer: Ipv4::name(),
+                layer: Ipv4Ref::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes available to read IPv4 Option--missing option_type byte field",
@@ -1969,6 +1995,7 @@ impl<'a> Ipv4OptionMut<'a> {
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(Ipv6Metadata)]
 #[ref_type(Ipv6Ref)]
+#[cfg(feature = "alloc")]
 pub struct Ipv6 {
     // version, ihl, length, and next header type all calculated dynamically
     traffic_class: TrafficClass,
@@ -1979,6 +2006,7 @@ pub struct Ipv6 {
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Ipv6 {
     /// The Traffic Class of the packet.
     #[inline]
@@ -2089,6 +2117,7 @@ impl Ipv6 {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for Ipv6 {
     fn from_bytes_current_layer_unchecked(bytes: &[u8]) -> Self {
         let ipv6 = Ipv6Ref::from_bytes_unchecked(bytes);
@@ -2119,6 +2148,7 @@ impl FromBytesCurrent for Ipv6 {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Ipv6 {
     /// The total length (in bytes) of the Ipv6 header and payload.
     fn len(&self) -> usize {
@@ -2126,6 +2156,7 @@ impl LayerLength for Ipv6 {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Ipv6 {
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool {
         payload
@@ -2167,6 +2198,7 @@ impl LayerObject for Ipv6 {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Ipv6 {
     fn to_bytes_checksummed(
         &self,
@@ -2327,6 +2359,7 @@ impl<'a> Ipv6Ref<'a> {
 
     /// The destination IP address of the packet.
     #[inline]
+    #[cfg(any(feature = "std", rustc_1_77))]
     pub fn dst(&self) -> Ipv6Addr {
         let segments: [u16; 8] = array::from_fn(|i| {
             u16::from_be_bytes(utils::to_array(self.data, 24 + (i * 2)).unwrap())
@@ -2371,7 +2404,7 @@ impl LayerOffset for Ipv6Ref<'_> {
 
         match bytes.get(6).copied() {
             Some(DATA_PROTO_TCP) => {
-                if layer_type == Tcp::layer_id() {
+                if layer_type == TcpRef::layer_id() {
                     Some(40)
                 } else {
                     TcpRef::payload_byte_index_default(payload, layer_type)
@@ -2379,7 +2412,7 @@ impl LayerOffset for Ipv6Ref<'_> {
                 }
             }
             Some(DATA_PROTO_UDP) => {
-                if layer_type == Udp::layer_id() {
+                if layer_type == UdpRef::layer_id() {
                     Some(40)
                 } else {
                     UdpRef::payload_byte_index_default(payload, layer_type)
@@ -2387,7 +2420,7 @@ impl LayerOffset for Ipv6Ref<'_> {
                 }
             }
             Some(DATA_PROTO_SCTP) => {
-                if layer_type == Sctp::layer_id() {
+                if layer_type == SctpRef::layer_id() {
                     Some(40)
                 } else {
                     SctpRef::payload_byte_index_default(payload, layer_type)
@@ -2395,7 +2428,7 @@ impl LayerOffset for Ipv6Ref<'_> {
                 }
             }
             _ => {
-                if layer_type == Raw::layer_id() {
+                if layer_type == RawRef::layer_id() {
                     Some(40)
                 } else {
                     None
@@ -2414,7 +2447,7 @@ impl Validate for Ipv6Ref<'_> {
                     u16::from_be_bytes(len_arr.try_into().unwrap()) as usize,
                 ),
                 _ => return Err(ValidationError {
-                    layer: Ipv4::name(),
+                    layer: Ipv4Ref::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason:
@@ -2425,7 +2458,7 @@ impl Validate for Ipv6Ref<'_> {
 
         if 40 + data_len > curr_layer.len() {
             return Err(ValidationError {
-                layer: Ipv4::name(),
+                layer: Ipv4Ref::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "total data length reported in Ipv6 header exceeded the available bytes",
@@ -2436,7 +2469,7 @@ impl Validate for Ipv6Ref<'_> {
         if version != IP_VERSION_IPV6 {
             // Version number not 4 (required for Ipv4)
             return Err(ValidationError {
-                layer: Ipv4::name(),
+                layer: Ipv4Ref::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "version number of Ipv6 header was not equal to 0x04",

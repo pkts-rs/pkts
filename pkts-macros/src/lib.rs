@@ -84,13 +84,17 @@ pub fn derive_stateless_layer_owned(input: proc_macro::TokenStream) -> proc_macr
             impl From<&#ref_type<'_>> for #layer_type {
                 fn from(r: &#ref_type<'_>) -> Self {
                     let mut res = Self::from_bytes_current_layer_unchecked((*r).into());
-                    match r.layer_metadata().as_any().downcast_ref::<&dyn CustomLayerSelection>() {
-                        Some(&layer_selection) => match layer_selection.payload_to_boxed((*r).into()) {
+                    #[cfg(feature = "custom_layer_selection")]
+                    if let Some(&layer_selection) = r.layer_metadata().as_any().downcast_ref::<&dyn CustomLayerSelection>() {
+                        match layer_selection.payload_to_boxed((*r).into()) {
                             Some(payload) => { res.add_payload_unchecked(payload); },
                             None => (),
                         }
-                        None => res.payload_from_bytes_unchecked_default((*r).into()),
+
+                        return res
                     }
+
+                    res.payload_from_bytes_unchecked_default((*r).into());
                     res
                 }
             }
@@ -260,7 +264,7 @@ pub fn derive_layer_ref(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         .find(|&a| a.path.segments.len() == 1 && a.path.segments[0].ident == "owned_type")
         .expect("owned_type attribute required for deriving `LayerRef`")
         .parse_args()
-        .expect("owned_type attribute must contain a struct name that implements `LayerRef`");
+        .expect("owned_type attribute must contain a struct name that implements `Layer`");
     let metadata_type: syn::Ident = ast
         .attrs
         .iter()
@@ -388,10 +392,21 @@ pub fn derive_layer_ref(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         impl LayerIdentifier for #layer_type<'_> {
             #[inline]
             fn layer_id() -> LayerId {
-                core::any::TypeId::of::<#owned_type>()
+                #[cfg(feature = "alloc")]
+                fn layer_id_inner() -> LayerId {
+                    core::any::TypeId::of::<#owned_type>()
+                }
+
+                #[cfg(not(feature = "alloc"))]
+                fn layer_id_inner() -> LayerId {
+                    core::any::TypeId::of::<#layer_type<'_>>()
+                }
+
+                layer_id_inner()
             }
         }
 
+        #[cfg(feature = "alloc")]
         impl ToLayer for #layer_type<'_> {
             type Owned = #owned_type;
 
@@ -422,15 +437,19 @@ fn derive_base_layer_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let expanded = quote::quote! {
         #[doc(hidden)]
-        impl #impl_generics BaseLayer for #layer_type #ty_generics #where_clause {
-            #[inline]
-            fn layer_name(&self) -> &'static str {
-                #layer_name
-            }
+        impl #impl_generics BaseLayer for #layer_type #ty_generics #where_clause {}
 
+        impl #impl_generics LayerObjectMetadata for #layer_type #ty_generics #where_clause {
             #[inline]
             fn layer_metadata(&self) -> &dyn LayerMetadata {
                 #metadata_type::instance()
+            }
+        }
+
+        impl #impl_generics LayerObjectName for #layer_type #ty_generics #where_clause {
+            #[inline]
+            fn layer_name(&self) -> &'static str {
+                #layer_name
             }
         }
 
@@ -450,6 +469,7 @@ fn derive_base_layer_impl(
             }
         }
 
+        #[cfg(feature = "alloc")]
         impl #impl_generics ToBoxedLayer for #layer_type #ty_generics #where_clause {
             #[inline]
             fn to_boxed_layer(&self) -> Box<dyn LayerObject> {

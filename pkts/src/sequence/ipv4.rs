@@ -1,11 +1,6 @@
-use core::{cmp, mem};
-
-#[cfg(feature = "std")]
-use std::collections::{BTreeMap, VecDeque};
-
-use super::{PktFilterDynFn, Sequence, SequenceObject, UnboundedSequence};
-use crate::layers::ip::{Ipv4Flags, Ipv4Ref};
-use crate::layers::traits::*;
+use core::cmp;
+#[cfg(feature = "alloc")]
+use core::mem;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -13,6 +8,15 @@ use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, VecDeque};
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::vec::Vec;
+
+#[cfg(feature = "std")]
+use std::collections::{BTreeMap, VecDeque};
+
+#[cfg(feature = "alloc")]
+use super::UnboundedSequence;
+use super::{PktFilterDynFn, Sequence, SequenceObject};
+use crate::layers::ip::{Ipv4Flags, Ipv4Ref};
+use crate::layers::traits::*;
 
 /// A [`Sequence`] type that handles defragmentation of IPv4 packets.
 /// This Sequence guarantees that packets returned from it will be
@@ -464,7 +468,7 @@ impl<const FRAG_CNT: usize> Ipv4Fragments<FRAG_CNT> {
 }
 
 #[cfg(not(feature = "alloc"))]
-struct Ipv4Fragment {
+pub struct Ipv4Fragment {
     id: u16,
     buf: [u8; 65536],
     len: usize,

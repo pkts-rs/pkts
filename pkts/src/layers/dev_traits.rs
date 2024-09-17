@@ -13,7 +13,6 @@
 //!
 
 use core::any;
-use core::convert::{TryFrom, TryInto};
 
 use crate::prelude::*;
 
@@ -53,17 +52,30 @@ pub trait StatelessLayer {}
 /// [`LayerRef`]) to be used interchangably for certain operations. For instance,
 /// concatenation of packets is achieved via this type in the [`Layer`]
 /// and [`core::ops::Div`] traits.
-pub trait BaseLayer: ToBoxedLayer + LayerLength {
+#[cfg(feature = "alloc")]
+pub trait BaseLayer: LayerObjectName + LayerObjectMetadata + ToBoxedLayer + LayerLength {}
+#[cfg(not(feature = "alloc"))]
+pub trait BaseLayer: LayerObjectName + LayerObjectMetadata + LayerLength {}
+
+/// Enables metadata associated with a given layer to be retrieved in an object-safe manner.
+pub trait LayerObjectMetadata {
+    /// Static metadata associated with the given layer. This method is normally only used
+    /// internally or when defining a custom `Layer` type.
+    fn layer_metadata(&self) -> &dyn LayerMetadata;
+}
+
+/// Allows the name of a protocol layer to be retrieved as a string.
+///
+/// This trait provides nearly identical functionality as [`LayerName`]; the only difference
+/// between the two is that [`LayerObjectName`] is object-safe (which is necessary in certain
+/// internal contexts), while [`LayerName`] is not.
+pub trait LayerObjectName {
     /// The name of the layer, usually (though not guaranteed to be) the same as the name of the
     /// struct.
     ///
     /// For [`LayerRef`] types, this will return the name of the layer without 'Ref' appended to
     /// it (i.e. the same as their associated [`Layer`] type).
     fn layer_name(&self) -> &'static str;
-
-    /// Static metadata associated with the given layer. This method is normally only used
-    /// internally or when defining a custom `Layer` type.
-    fn layer_metadata(&self) -> &dyn LayerMetadata;
 }
 
 /// Allows the name of a protocol layer to be retrieved as a string.
@@ -106,6 +118,7 @@ impl<T: any::Any> AsAny for T {
 ///
 /// This is primarily used internally to facilitate appending one layer to another
 /// in a type-agnostic way.
+#[cfg(feature = "alloc")]
 pub trait ToBoxedLayer {
     /// Clone the given instance in a [`Box`] and return it as a `dyn Layer` type.
     fn to_boxed_layer(&self) -> Box<dyn LayerObject>;
@@ -124,6 +137,7 @@ pub trait BaseLayerMetadata: BaseLayer {
     fn metadata() -> &'static dyn LayerMetadata;
 }
 
+#[cfg(feature = "alloc")]
 impl Clone for Box<dyn LayerObject> {
     #[inline]
     fn clone(&self) -> Self {
@@ -173,6 +187,7 @@ pub trait LayerOffset {
 }
 
 /// A singleton associated with a [`Layer`] that enables indexing by that layer's type name.
+#[cfg(feature = "alloc")]
 pub trait LayerIndexSingleton: crate::private::Sealed {
     type LayerType: LayerObject;
 }
@@ -333,9 +348,11 @@ pub trait BaseLayerSelection: AsAny {}
 pub trait CustomLayerSelection: BaseLayerSelection {
     fn validate_payload(&self, curr_layer: &[u8]) -> Result<(), ValidationError>;
 
+    #[cfg(feature = "alloc")]
     fn can_add_payload(&self, payload: &dyn LayerObject) -> bool;
 
     fn payload_byte_index(&self, curr_layer: &[u8], desired_type: &LayerId) -> Option<usize>;
 
+    #[cfg(feature = "alloc")]
     fn payload_to_boxed(&self, curr_layer: &[u8]) -> Option<Box<dyn LayerObject>>;
 }

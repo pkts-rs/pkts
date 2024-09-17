@@ -1,14 +1,17 @@
 use core::cmp::Ordering;
 use core::convert::TryInto;
+#[cfg(feature = "alloc")]
 use core::mem;
 
 #[cfg(feature = "std")]
 use std::collections::{BTreeMap, VecDeque};
-#[cfg(feature = "std")]
-use std::iter::FromIterator;
 
+#[cfg(feature = "alloc")]
 use super::{PktFilterDynFn, Sequence, SequenceObject, UnboundedSequence};
-use crate::layers::sctp::{DataChunkFlags, SctpRef};
+use crate::layers::sctp::DataChunkFlags;
+#[cfg(feature = "alloc")]
+use crate::layers::sctp::SctpRef;
+#[cfg(feature = "alloc")]
 use crate::prelude::FromBytesRef;
 use crate::utils;
 
@@ -517,6 +520,7 @@ impl<'a> FragHeader<'a> {
     */
 }
 
+#[cfg(feature = "alloc")]
 struct SctpFragmentEntry {
     tsn: u32,
     flags: DataChunkFlags,

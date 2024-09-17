@@ -48,7 +48,9 @@ use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 use crate::writer::PacketWriter;
 
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -79,6 +81,7 @@ pub enum Cardinal<T> {
 /// [`Ipv4`]: struct@crate::layers::ip::Ipv4
 /// [`Tcp`]: struct@crate::layers::tcp::Tcp
 /// [`Udp`]: struct@crate::layers::udp::Udp
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(RawMetadata)]
 #[ref_type(RawRef)]
@@ -88,6 +91,7 @@ pub struct Raw {
     // payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Raw {
     #[inline]
     fn len(&self) -> usize {
@@ -99,6 +103,7 @@ impl LayerLength for Raw {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Raw {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -126,6 +131,7 @@ impl LayerObject for Raw {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Raw {
     fn to_bytes_checksummed(
         &self,
@@ -138,6 +144,7 @@ impl ToBytes for Raw {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for Raw {
     #[inline]
     fn payload_from_bytes_unchecked_default(&mut self, _bytes: &[u8]) {
@@ -152,6 +159,7 @@ impl FromBytesCurrent for Raw {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Raw {
     /// A slice of the entire contents of the `Raw` layer.
     #[inline]
