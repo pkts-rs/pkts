@@ -12,14 +12,18 @@
 //!
 //!
 
-use core::convert::{TryFrom, TryInto};
+use core::cmp;
+#[cfg(feature = "alloc")]
+use core::convert::TryInto;
 use core::iter::Iterator;
-use core::{cmp, slice};
+#[cfg(feature = "alloc")]
+use core::slice;
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 use crate::layers::*;
 use crate::utils;
+#[cfg(feature = "alloc")]
 use crate::writer::PacketWritable;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -29,6 +33,7 @@ use alloc::vec::Vec;
 
 use bitflags::bitflags;
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(DiameterMetadata)]
 #[ref_type(DiameterRef)]
@@ -43,6 +48,7 @@ pub struct Diameter {
     payload: Option<Box<dyn LayerObject>>, // Kept for compatibility purposes // TODO: remove?
 }
 
+#[cfg(feature = "alloc")]
 impl Diameter {
     #[inline]
     pub fn version(&self) -> u8 {
@@ -119,6 +125,7 @@ impl Diameter {
     }
 }
 
+#[cfg(feature = "alloc")]
 #[doc(hidden)]
 impl FromBytesCurrent for Diameter {
     #[inline]
@@ -146,6 +153,7 @@ impl FromBytesCurrent for Diameter {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Diameter {
     #[inline]
     fn len(&self) -> usize {
@@ -156,6 +164,7 @@ impl LayerLength for Diameter {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Diameter {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -193,6 +202,7 @@ impl LayerObject for Diameter {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Diameter {
     fn to_bytes_checksummed(
         &self,
@@ -310,7 +320,7 @@ impl Validate for DiameterRef<'_> {
                 // Validate length field (too big) and header bytes
                 if cmp::max(20, len) > curr_layer.len() {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "insufficient bytes in Diameter packet for header/Data payload",
@@ -320,7 +330,7 @@ impl Validate for DiameterRef<'_> {
                 // Validate length field (too small)
                 if len < 20 {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "Diameter packet Length field was too small for header",
@@ -329,7 +339,7 @@ impl Validate for DiameterRef<'_> {
 
                 if len % 4 != 0 {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "Diameter packet Length field was not a multiple of 4",
@@ -354,7 +364,7 @@ impl Validate for DiameterRef<'_> {
                 // Check for trailing bytes
                 if len < curr_layer.len() {
                     Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::ExcessBytes(curr_layer.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of Diameter packet",
@@ -364,7 +374,7 @@ impl Validate for DiameterRef<'_> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Diameter::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in DiameterRef for Message Length field",
@@ -414,6 +424,7 @@ pub const DIAM_BASE_COMM_SESSION_TERM: u32 = 275;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(DiamBaseMetadata)]
 #[ref_type(DiamBaseRef)]
+#[cfg(feature = "alloc")]
 pub struct DiamBase {
     // version: u8, // version must be equal to 1
     flags: CommandFlags,
@@ -424,6 +435,7 @@ pub struct DiamBase {
     payload: Option<Box<dyn LayerObject>>, // Kept for compatibility purposes // TODO: remove?
 }
 
+#[cfg(feature = "alloc")]
 impl DiamBase {
     #[inline]
     pub fn version(&self) -> u8 {
@@ -486,6 +498,7 @@ impl DiamBase {
     }
 }
 
+#[cfg(feature = "alloc")]
 #[doc(hidden)]
 impl FromBytesCurrent for DiamBase {
     #[inline]
@@ -518,6 +531,7 @@ impl FromBytesCurrent for DiamBase {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for DiamBase {
     #[inline]
     fn len(&self) -> usize {
@@ -528,6 +542,7 @@ impl LayerLength for DiamBase {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for DiamBase {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -566,6 +581,7 @@ impl LayerObject for DiamBase {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for DiamBase {
     fn to_bytes_checksummed(
         &self,
@@ -680,7 +696,7 @@ impl Validate for DiamBaseRef<'_> {
                 // Validate length field (too big) and header bytes
                 if cmp::max(20, len) > curr_layer.len() {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "insufficient bytes in Diameter packet for header/Data payload",
@@ -690,7 +706,7 @@ impl Validate for DiamBaseRef<'_> {
                 // Validate length field (too small)
                 if len < 20 {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "Diameter packet Length field was too small for header",
@@ -699,7 +715,7 @@ impl Validate for DiamBaseRef<'_> {
 
                 if len % 4 != 0 {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "Diameter packet Length field was not a multiple of 4",
@@ -724,7 +740,7 @@ impl Validate for DiamBaseRef<'_> {
                 // Check for trailing bytes
                 if len < curr_layer.len() {
                     Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::ExcessBytes(curr_layer.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of Diameter packet",
@@ -734,7 +750,7 @@ impl Validate for DiamBaseRef<'_> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Diameter::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in DiameterRef for Message Length field",
@@ -900,6 +916,7 @@ bitflags! {
     }
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub enum BaseCommand {
     AbortSessionReq(AbortSessionReq),
@@ -919,6 +936,7 @@ pub enum BaseCommand {
     /* TODO: Uncomprehensive list annotation */
 }
 
+#[cfg(feature = "alloc")]
 impl BaseCommand {
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
         Self::validate(bytes)?;
@@ -957,10 +975,12 @@ impl BaseCommand {
 
     #[inline]
     pub fn to_bytes_extended<T: PacketWritable>(&self, writer: &mut PacketWriter<'_, T>) {
+        writer.update_layer::<DiamBase>();
         todo!()
     }
 }
 
+/*
 pub enum BaseCommandRef<'a> {
     AbortSessionReq(AbortSessionReqRef<'a>),
     AbortSessionAns(AbortSessionAns),
@@ -978,12 +998,15 @@ pub enum BaseCommandRef<'a> {
     SessionTermAns(SessionTermAns),
     /* TODO: Uncomprehensive list annotation */
 }
+*/
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct AbortSessionReq {
     avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 impl AbortSessionReq {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -1013,81 +1036,96 @@ impl AbortSessionReq {
 }
 
 pub struct AbortSessionReqRef<'a> {
-    data: &'a [u8],
+    _data: &'a [u8],
 }
 
 impl<'a> AbortSessionReqRef<'a> {}
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct AbortSessionAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct AccountingReq {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct AccountingAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct CapExchangeReq {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct CapExchangeAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct DevWatchdogReq {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct DevWatchdogAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct DisconnectPeerReq {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct DisconnectPeerAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct ReAuthReq {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct ReAuthAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct SessionTermReq {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub struct SessionTermAns {
-    avps: Vec<BaseAvp>,
+    _avps: Vec<BaseAvp>,
 }
 
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug)]
 pub enum BaseAvp {
     Other(GenericAvp),
 }
 
+#[cfg(feature = "alloc")]
 impl From<BaseAvpRef<'_>> for BaseAvp {
     #[inline]
     fn from(value: BaseAvpRef<'_>) -> Self {
@@ -1095,6 +1133,7 @@ impl From<BaseAvpRef<'_>> for BaseAvp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&BaseAvpRef<'_>> for BaseAvp {
     fn from(value: &BaseAvpRef<'_>) -> Self {
         match value {
@@ -1151,6 +1190,7 @@ impl<'a> Iterator for BaseAvpIterRef<'a> {
 
 // TODO: write a macro to generalize work for AVPs
 pub mod avp {
+    #[cfg(feature = "alloc")]
     use super::{BaseAvp, GenericAvp};
 
     #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -1159,7 +1199,7 @@ pub mod avp {
     use alloc::vec::Vec;
 
     pub struct AcctInterimInterval {
-        interval: u32,
+        _interval: u32,
     }
 
     #[repr(i32)]
@@ -1170,12 +1210,13 @@ pub mod avp {
         Unknown(i32),
     }
 
+    #[cfg(feature = "alloc")]
     pub struct AcctMultiSessionId {
-        session_id: String,
+        _session_id: String,
     }
 
     pub struct AcctRecordNumber {
-        record_number: u32,
+        _record_number: u32,
     }
 
     pub enum AcctRecordType {
@@ -1186,20 +1227,21 @@ pub mod avp {
         Unknown(i32),
     }
 
+    #[cfg(feature = "alloc")]
     pub struct AcctSessionId {
-        session_id: Vec<u8>,
+        _session_id: Vec<u8>,
     }
 
     pub struct AcctSubSessionId {
-        sub_session_id: u64,
+        _sub_session_id: u64,
     }
 
     pub struct AcctApplicationId {
-        application_id: u32,
+        _application_id: u32,
     }
 
     pub struct AuthApplicationId {
-        application_id: u32,
+        _application_id: u32,
     }
 
     pub enum AuthRequestType {
@@ -1210,11 +1252,11 @@ pub mod avp {
     }
 
     pub struct AuthLifetime {
-        lifetime: u32,
+        _lifetime: u32,
     }
 
     pub struct AuthGracePeriod {
-        grace_period: u32,
+        _grace_period: u32,
     }
 
     pub enum AuthSessionState {
@@ -1229,16 +1271,19 @@ pub mod avp {
         Unknown(i32),
     }
 
+    #[cfg(feature = "alloc")]
     pub struct Class {
-        class: Vec<u8>,
+        _class: Vec<u8>,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct DestinationHost {
-        host_id: String, // Diameter Identity
+        _host_id: String, // Diameter Identity
     }
 
+    #[cfg(feature = "alloc")]
     pub struct DestinationRealm {
-        realm_id: String, // Diameter Identity
+        _realm_id: String, // Diameter Identity
     }
 
     pub enum DisconnectCause {
@@ -1248,78 +1293,90 @@ pub mod avp {
         Unknown(i32),
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ErrorMessage {
-        message: String,
+        _message: String,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ErrorReportingHost {
-        id: String, // Diameter Identity
+        _id: String, // Diameter Identity
     }
 
     pub struct EventTimestamp {
-        time: u32,
+        _time: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ExperimentalResult {
-        avps: Vec<BaseAvp>, // 1x Vendor-Id, 1x Experimental-Result-Code (any order)
+        _avps: Vec<BaseAvp>, // 1x Vendor-Id, 1x Experimental-Result-Code (any order)
     }
 
     pub struct ExperimentalResultCode {
-        res_code: u32,
+        _res_code: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct FailedAvp {
-        failed_avps: Vec<GenericAvp>,
+        _failed_avps: Vec<GenericAvp>,
     }
 
     pub struct FirmwareRevision {
-        rev: u32,
+        _rev: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct HostIpAddress {
         // Address type:
-        addr_type: u16,
-        addr_value: Vec<u8>,
+        _addr_type: u16,
+        _addr_value: Vec<u8>,
     }
 
     pub struct InbandSecurityId {
-        security_id: u32,
+        _security_id: u32,
     }
 
     pub struct MultiRoundTimeout {
-        timeout: u32,
+        _timeout: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct OriginHost {
-        id: String, // Diameter Identity
+        _id: String, // Diameter Identity
     }
 
+    #[cfg(feature = "alloc")]
     pub struct OriginRealm {
-        id: String, // Diameter Identity
+        _id: String, // Diameter Identity
     }
 
     pub struct OriginStateId {
-        state_id: u32,
+        _state_id: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ProductName {
-        name: String,
+        _name: String,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ProxyHost {
-        id: String, // Diameter Identity
+        _id: String, // Diameter Identity
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ProxyInfo {
-        apvs: Vec<BaseAvp>, // { Proxy-Host } { Proxy-State } *[ AVP ]
+        _apvs: Vec<BaseAvp>, // { Proxy-Host } { Proxy-State } *[ AVP ]
     }
 
+    #[cfg(feature = "alloc")]
     pub struct ProxyState {
-        state: Vec<u8>,
+        _state: Vec<u8>,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct RedirectHost {
-        uri: String, // Diameter URI
+        _uri: String, // Diameter URI
     }
 
     pub enum RedirectHostUsage {
@@ -1334,27 +1391,29 @@ pub mod avp {
     }
 
     pub struct RedirectMaxCacheTime {
-        cache_time: u32,
+        _cache_time: u32,
     }
 
     pub struct ResultCode {
-        code: u32,
+        _code: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct RouteRecord {
-        id: String, // Diameter Identity
+        _id: String, // Diameter Identity
     }
 
+    #[cfg(feature = "alloc")]
     pub struct SessionId {
-        id: String,
+        _id: String,
     }
 
     pub struct SessionTimeout {
-        timeout: u32,
+        _timeout: u32,
     }
 
     pub struct SessionBinding {
-        binding: u32,
+        _binding: u32,
     }
 
     pub enum SessionServerFailover {
@@ -1365,7 +1424,7 @@ pub mod avp {
     }
 
     pub struct SupportedVendorId {
-        id: u32,
+        _id: u32,
     }
 
     pub enum TerminationCause {
@@ -1403,16 +1462,18 @@ pub mod avp {
         Unassigned(i32),              // < 0, 9, 10, > 32
     }
 
+    #[cfg(feature = "alloc")]
     pub struct UserName {
-        username: String,
+        _username: String,
     }
 
     pub struct VendorId {
-        id: u32,
+        _id: u32,
     }
 
+    #[cfg(feature = "alloc")]
     pub struct VendorSpecificApplicationId {
-        avps: Vec<BaseAvp>, // 1 Vendor-Id required, 1 Auth-Application-Id and 1 Acct-Application-Id both optional
+        _avps: Vec<BaseAvp>, // 1 Vendor-Id required, 1 Auth-Application-Id and 1 Acct-Application-Id both optional
     }
 }
 
@@ -1467,6 +1528,7 @@ pub enum S6aCommand {
 /// +-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct GenericAvp {
     code: u32,
     flags: AvpFlags,
@@ -1474,6 +1536,7 @@ pub struct GenericAvp {
     data: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl GenericAvp {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -1581,6 +1644,7 @@ impl GenericAvp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<GenericAvpRef<'_>> for GenericAvp {
     #[inline]
     fn from(value: GenericAvpRef<'_>) -> Self {
@@ -1588,6 +1652,7 @@ impl From<GenericAvpRef<'_>> for GenericAvp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&GenericAvpRef<'_>> for GenericAvp {
     fn from(value: &GenericAvpRef<'_>) -> Self {
         GenericAvp {
@@ -1631,7 +1696,7 @@ impl<'a> GenericAvpRef<'a> {
                 // Validate length field (too big) and header bytes
                 if cmp::max(minimum_length, len) > bytes.len() {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: DiamBaseRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "insufficient bytes in Diameter AVP for Data payload",
@@ -1641,7 +1706,7 @@ impl<'a> GenericAvpRef<'a> {
                 // Validate length field (too small)
                 if unpadded_len < minimum_length {
                     return Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: DiamBaseRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "Diameter AVP Length field was too small for header",
@@ -1652,7 +1717,7 @@ impl<'a> GenericAvpRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Diameter::name(),
+                            layer: DiamBaseRef::name(),
                             class: ValidationErrorClass::UnusualPadding,
                             #[cfg(feature = "error_string")]
                             reason: "non-zero padding values found at end of Diameter AVP",
@@ -1662,7 +1727,7 @@ impl<'a> GenericAvpRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Diameter::name(),
+                        layer: DiamBaseRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of Diameter AVP",
@@ -1672,7 +1737,7 @@ impl<'a> GenericAvpRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Diameter::name(),
+                layer: DiamBaseRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in Diameter AVP for header",

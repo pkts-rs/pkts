@@ -15,6 +15,9 @@ repository = "https://github.com/pkts-rs/pkts"
 keywords = ["packets", "network", "scapy", "parsing"]
 categories = ["network-programming", "encoding", "parsing"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rustc_1_77)'] }
+
 [features]
 default = ["std", "custom_layer_selection", "error_string"]
 std = ["alloc"]

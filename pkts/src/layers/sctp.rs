@@ -12,12 +12,14 @@
 //!
 //!
 
-use core::convert::{TryFrom, TryInto};
+use core::cmp;
+#[cfg(feature = "alloc")]
+use core::convert::TryFrom;
+#[cfg(feature = "alloc")]
+use core::iter::FromIterator;
 use core::iter::Iterator;
-use core::{cmp, mem, slice};
-
-#[cfg(feature = "std")]
-use std::iter::FromIterator;
+#[cfg(feature = "alloc")]
+use core::{mem, slice};
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
@@ -27,7 +29,9 @@ use crate::writer::PacketWritable;
 
 use bitflags::bitflags;
 
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -99,6 +103,7 @@ const ERR_CODE_PROTOCOL_VIOLATION: u16 = 13;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(TcpMetadata)]
 #[ref_type(SctpRef)]
+#[cfg(feature = "alloc")]
 pub struct Sctp {
     sport: u16,
     dport: u16,
@@ -108,6 +113,7 @@ pub struct Sctp {
     payload_chunks: Vec<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Sctp {
     /// The SCTP port number from which the packet has been sent (i.e. Source Port).
     #[inline]
@@ -270,6 +276,7 @@ impl Sctp {
     */
 }
 
+#[cfg(feature = "alloc")]
 #[doc(hidden)]
 impl FromBytesCurrent for Sctp {
     fn from_bytes_current_layer_unchecked(bytes: &[u8]) -> Self {
@@ -300,6 +307,7 @@ impl FromBytesCurrent for Sctp {
     fn payload_from_bytes_unchecked_default(&mut self, _bytes: &[u8]) {}
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Sctp {
     fn len(&self) -> usize {
         8 + self.control_chunks.iter().map(|c| c.len()).sum::<usize>()
@@ -307,6 +315,7 @@ impl LayerLength for Sctp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Sctp {
     #[inline]
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool {
@@ -337,6 +346,7 @@ impl LayerObject for Sctp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Sctp {
     fn to_bytes_checksummed(
         &self,
@@ -490,7 +500,7 @@ impl Validate for SctpRef<'_> {
             Some(rem) => rem,
             None => {
                 return Err(ValidationError {
-                    layer: Sctp::name(),
+                    layer: Self::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason: "insufficient bytes in SCTP packet for Common Header",
@@ -508,11 +518,11 @@ impl Validate for SctpRef<'_> {
             let chunk_validation = match chunk_type {
                 CHUNK_TYPE_DATA => {
                     data_reached = true;
-                    SctpDataChunk::validate(remaining)
+                    SctpDataChunkRef::validate(remaining)
                 }
                 _ if data_reached => {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "SCTP Control Chunk not allowed after DATA Chunk in Chunks field",
@@ -520,32 +530,32 @@ impl Validate for SctpRef<'_> {
                 }
                 CHUNK_TYPE_INIT => {
                     single_chunk = true;
-                    InitChunk::validate(remaining)
+                    InitChunkRef::validate(remaining)
                 }
                 CHUNK_TYPE_INIT_ACK => {
                     single_chunk = true;
-                    InitAckChunk::validate(remaining)
+                    InitAckChunkRef::validate(remaining)
                 }
-                CHUNK_TYPE_SACK => SackChunk::validate(remaining),
-                CHUNK_TYPE_HEARTBEAT => HeartbeatChunk::validate(remaining),
-                CHUNK_TYPE_HEARTBEAT_ACK => HeartbeatAckChunk::validate(remaining),
-                CHUNK_TYPE_ABORT => AbortChunk::validate(remaining),
+                CHUNK_TYPE_SACK => SackChunkRef::validate(remaining),
+                CHUNK_TYPE_HEARTBEAT => HeartbeatChunkRef::validate(remaining),
+                CHUNK_TYPE_HEARTBEAT_ACK => HeartbeatAckChunkRef::validate(remaining),
+                CHUNK_TYPE_ABORT => AbortChunkRef::validate(remaining),
                 CHUNK_TYPE_SHUTDOWN => {
                     shutdown = true;
-                    ShutdownChunk::validate(remaining)
+                    ShutdownChunkRef::validate(remaining)
                 }
                 CHUNK_TYPE_SHUTDOWN_ACK => {
                     shutdown = true;
-                    ShutdownAckChunk::validate(remaining)
+                    ShutdownAckChunkRef::validate(remaining)
                 }
-                CHUNK_TYPE_ERROR => ErrorChunk::validate(remaining),
-                CHUNK_TYPE_COOKIE_ECHO => CookieEchoChunk::validate(remaining),
-                CHUNK_TYPE_COOKIE_ACK => CookieAckChunk::validate(remaining),
+                CHUNK_TYPE_ERROR => ErrorChunkRef::validate(remaining),
+                CHUNK_TYPE_COOKIE_ECHO => CookieEchoChunkRef::validate(remaining),
+                CHUNK_TYPE_COOKIE_ACK => CookieAckChunkRef::validate(remaining),
                 CHUNK_TYPE_SHUTDOWN_COMPLETE => {
                     single_chunk = true;
-                    ShutdownCompleteChunk::validate(remaining)
+                    ShutdownCompleteChunkRef::validate(remaining)
                 }
-                _ => UnknownChunk::validate(remaining),
+                _ => UnknownChunkRef::validate(remaining),
             };
 
             match chunk_validation {
@@ -562,7 +572,7 @@ impl Validate for SctpRef<'_> {
 
         if single_chunk && chunk_cnt > 1 {
             return Err(ValidationError {
-                layer: Sctp::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "multiple chunks bundled in one SCTP message where only one was allowed (chunk types INIT, INIT_ACK and SHUTDOWN_COMPLETE cannot be bundled with other chunks)",
@@ -571,7 +581,7 @@ impl Validate for SctpRef<'_> {
 
         if shutdown && data_reached {
             return Err(ValidationError {
-                layer: Sctp::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason:
@@ -678,6 +688,7 @@ impl<'a> Iterator for ChunksIterRef<'a> {
 
 /// An SCTP Control chunk.
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub enum SctpControlChunk {
     Init(InitChunk),
     InitAck(InitAckChunk),
@@ -694,6 +705,7 @@ pub enum SctpControlChunk {
     Unknown(UnknownChunk),
 }
 
+#[cfg(feature = "alloc")]
 impl SctpControlChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -769,6 +781,7 @@ impl SctpControlChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<SctpControlChunkRef<'_>> for SctpControlChunk {
     #[inline]
     fn from(value: SctpControlChunkRef<'_>) -> Self {
@@ -776,6 +789,7 @@ impl From<SctpControlChunkRef<'_>> for SctpControlChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&SctpControlChunkRef<'_>> for SctpControlChunk {
     fn from(value: &SctpControlChunkRef<'_>) -> Self {
         match value {
@@ -887,6 +901,7 @@ impl<'a> SctpControlChunkRef<'a> {
 ///    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct InitChunk {
     flags: u8,
     init_tag: u32,
@@ -897,6 +912,7 @@ pub struct InitChunk {
     options: Vec<InitOption>,
 }
 
+#[cfg(feature = "alloc")]
 impl InitChunk {
     /// Converts the given bytes into an [`InitChunk`] instance, returning an error if the bytes are
     /// not well-formed.
@@ -1059,6 +1075,7 @@ impl InitChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<InitChunkRef<'_>> for InitChunk {
     #[inline]
     fn from(value: InitChunkRef<'_>) -> Self {
@@ -1066,6 +1083,7 @@ impl From<InitChunkRef<'_>> for InitChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&InitChunkRef<'_>> for InitChunk {
     fn from(value: &InitChunkRef<'_>) -> Self {
         let mut options = Vec::new();
@@ -1132,7 +1150,7 @@ impl<'a> InitChunkRef<'a> {
 
                 if bytes.len() < cmp::max(len, 20) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP INIT chunk for header and optional parameters",
@@ -1141,7 +1159,7 @@ impl<'a> InitChunkRef<'a> {
 
                 if len % 4 != 0 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "SCTP INIT chunk length was not a multiple of 4",
@@ -1150,7 +1168,7 @@ impl<'a> InitChunkRef<'a> {
 
                 if len < 20 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -1160,13 +1178,13 @@ impl<'a> InitChunkRef<'a> {
 
                 let mut options = &bytes[20..];
                 while !options.is_empty() {
-                    match InitOption::validate(options) {
+                    match InitOptionRef::validate(options) {
                         Err(e) => {
                             if let ValidationErrorClass::ExcessBytes(extra) = e.class {
                                 options = &options[options.len() - extra..];
                             } else {
                                 return Err(ValidationError {
-                                    layer: Sctp::name(),
+                                    layer: SctpRef::name(),
                                     class: ValidationErrorClass::InvalidValue,
                                     #[cfg(feature = "error_string")]
                                     reason: e.reason,
@@ -1179,7 +1197,7 @@ impl<'a> InitChunkRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP INIT chunk",
@@ -1189,7 +1207,7 @@ impl<'a> InitChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP INIT chunk for header Length field",
@@ -1294,6 +1312,7 @@ impl<'a> Iterator for InitOptionsIterRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub enum InitOption {
     Ipv4Address(u32),
     Ipv6Address(u128),
@@ -1303,6 +1322,7 @@ pub enum InitOption {
     Unknown(u16, Vec<u8>),
 }
 
+#[cfg(feature = "alloc")]
 impl InitOption {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -1384,7 +1404,7 @@ impl InitOption {
             }
             Self::HostnameAddress(addr) => {
                 let unpadded_len = u16::try_from(self.unpadded_len())
-                    .map_err(|_| SerializationError::length_encoding(Sctp::name()))?;
+                    .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?;
                 writer.write_slice(&INIT_OPT_HOSTNAME_ADDR.to_be_bytes())?;
                 writer.write_slice(&unpadded_len.to_be_bytes())?;
                 writer.write_slice(&addr)?;
@@ -1394,7 +1414,7 @@ impl InitOption {
             }
             Self::SupportedAddressTypes(addr_types) => {
                 let unpadded_len = u16::try_from(self.unpadded_len())
-                    .map_err(|_| SerializationError::length_encoding(Sctp::name()))?;
+                    .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?;
                 writer.write_slice(&INIT_OPT_SUPP_ADDR_TYPES.to_be_bytes())?;
                 writer.write_slice(&unpadded_len.to_be_bytes())?;
                 for addr_type in addr_types {
@@ -1407,7 +1427,7 @@ impl InitOption {
             }
             Self::Unknown(opt_type, data) => {
                 let unpadded_len = u16::try_from(self.unpadded_len())
-                    .map_err(|_| SerializationError::length_encoding(Sctp::name()))?;
+                    .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?;
                 writer.write_slice(&opt_type.to_be_bytes())?;
                 writer.write_slice(&unpadded_len.to_be_bytes())?;
                 writer.write_slice(data)?;
@@ -1420,6 +1440,7 @@ impl InitOption {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<InitOptionRef<'_>> for InitOption {
     #[inline]
     fn from(value: InitOptionRef<'_>) -> Self {
@@ -1427,6 +1448,7 @@ impl From<InitOptionRef<'_>> for InitOption {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&InitOptionRef<'_>> for InitOption {
     fn from(value: &InitOptionRef<'_>) -> Self {
         match value.payload() {
@@ -1482,7 +1504,7 @@ impl<'a> InitOptionRef<'a> {
 
                 if bytes.len() < len {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -1500,7 +1522,7 @@ impl<'a> InitOptionRef<'a> {
                 if let Some(e_len) = expected_unpadded_len {
                     if unpadded_len != e_len {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]            
                             reason: "SCTP INIT option Length field didn't match expected length based on Option Type",
@@ -1510,7 +1532,7 @@ impl<'a> InitOptionRef<'a> {
 
                 if opt_type == INIT_OPT_SUPP_ADDR_TYPES && unpadded_len % 2 != 0 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "SCTP INIT option payload had missing or trailing byte for Supported Address Types option",
@@ -1519,7 +1541,7 @@ impl<'a> InitOptionRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP INIT option",
@@ -1529,7 +1551,7 @@ impl<'a> InitOptionRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP INIT option for header",
@@ -1593,6 +1615,7 @@ pub enum InitOptionPayloadRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct InitAckChunk {
     flags: u8,
     init_tag: u32,
@@ -1603,6 +1626,7 @@ pub struct InitAckChunk {
     options: Vec<InitAckOption>,
 }
 
+#[cfg(feature = "alloc")]
 impl InitAckChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -1712,7 +1736,7 @@ impl InitAckChunk {
         writer.write_slice(&[CHUNK_TYPE_INIT_ACK, self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.init_tag.to_be_bytes())?;
@@ -1728,6 +1752,7 @@ impl InitAckChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<InitAckChunkRef<'_>> for InitAckChunk {
     #[inline]
     fn from(value: InitAckChunkRef<'_>) -> Self {
@@ -1735,6 +1760,7 @@ impl From<InitAckChunkRef<'_>> for InitAckChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&InitAckChunkRef<'_>> for InitAckChunk {
     fn from(value: &InitAckChunkRef<'_>) -> Self {
         let mut options = Vec::new();
@@ -1779,7 +1805,7 @@ impl<'a> InitAckChunkRef<'a> {
 
                 if bytes.len() < cmp::max(len, 20) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP INIT ACK chunk for header and optional parameters",
@@ -1788,7 +1814,7 @@ impl<'a> InitAckChunkRef<'a> {
 
                 if len % 4 != 0 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "SCTP INIT ACK chunk length was not a multiple of 4",
@@ -1797,7 +1823,7 @@ impl<'a> InitAckChunkRef<'a> {
 
                 if len < 20 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "length field of SCTP INIT ACK chunk was too short for header",
@@ -1806,7 +1832,7 @@ impl<'a> InitAckChunkRef<'a> {
 
                 let mut options = &bytes[20..];
                 while !options.is_empty() {
-                    match InitAckOption::validate(options) {
+                    match InitAckOptionRef::validate(options) {
                         Err(e) => {
                             if let ValidationErrorClass::ExcessBytes(extra) = e.class {
                                 options = &options[options.len() - extra..];
@@ -1820,7 +1846,7 @@ impl<'a> InitAckChunkRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP INIT ACK chunk",
@@ -1830,7 +1856,7 @@ impl<'a> InitAckChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP INIT ACK chunk for header Length field",
@@ -1939,6 +1965,7 @@ impl<'a> Iterator for InitAckOptionsIterRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub enum InitAckOption {
     StateCookie(Vec<u8>),
     Ipv4Address(u32),
@@ -1948,6 +1975,7 @@ pub enum InitAckOption {
     Unknown(u16, Vec<u8>),
 }
 
+#[cfg(feature = "alloc")]
 impl InitAckOption {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -1998,7 +2026,7 @@ impl InitAckOption {
         writer: &mut PacketWriter<'_, T>,
     ) -> Result<(), SerializationError> {
         let unpadded_len = u16::try_from(self.unpadded_len())
-            .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+            .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
             .to_be_bytes();
 
         match self {
@@ -2048,6 +2076,7 @@ impl InitAckOption {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<InitAckOptionRef<'_>> for InitAckOption {
     #[inline]
     fn from(value: InitAckOptionRef<'_>) -> Self {
@@ -2055,6 +2084,7 @@ impl From<InitAckOptionRef<'_>> for InitAckOption {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&InitAckOptionRef<'_>> for InitAckOption {
     fn from(value: &InitAckOptionRef<'_>) -> Self {
         match value.payload() {
@@ -2101,7 +2131,7 @@ impl<'a> InitAckOptionRef<'a> {
 
                 if bytes.len() < cmp::max(len, 4) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -2118,7 +2148,7 @@ impl<'a> InitAckOptionRef<'a> {
                 if let Some(e_len) = expected_unpadded_len {
                     if unpadded_len != e_len {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]            
                             reason: "SCTP INIT ACK option Length field didn't match expected length based on Option Type",
@@ -2126,7 +2156,7 @@ impl<'a> InitAckOptionRef<'a> {
                     }
                 } else if unpadded_len < 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "SCTP INIT ACK option Length field too short to cover header",
@@ -2138,7 +2168,7 @@ impl<'a> InitAckOptionRef<'a> {
                     match InitOptionRef::validate(&bytes[4..len]) {
                         Ok(_) => (),
                         Err(_) => return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]            
                             reason: "SCTP INIT ACK Unrecognized Parameter Option had malformed INIT parameter in its payload",
@@ -2148,7 +2178,7 @@ impl<'a> InitAckOptionRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP INIT ACK Option",
@@ -2158,7 +2188,7 @@ impl<'a> InitAckOptionRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP INIT ACK Option for header",
@@ -2216,6 +2246,7 @@ pub enum InitAckOptionPayloadRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct SackChunk {
     flags: u8,
     cum_tsn_ack: u32,
@@ -2224,6 +2255,7 @@ pub struct SackChunk {
     duplicate_tsns: Vec<u32>,
 }
 
+#[cfg(feature = "alloc")]
 impl SackChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -2314,19 +2346,19 @@ impl SackChunk {
         writer.write_slice(&[self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.cum_tsn_ack.to_be_bytes())?;
         writer.write_slice(&self.a_rwnd.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.gap_ack_blocks.len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(
             &u16::try_from(self.duplicate_tsns.len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         for (gap_ack_start, gap_ack_end) in &self.gap_ack_blocks {
@@ -2343,6 +2375,7 @@ impl SackChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<SackChunkRef<'_>> for SackChunk {
     #[inline]
     fn from(value: SackChunkRef<'_>) -> Self {
@@ -2350,6 +2383,7 @@ impl From<SackChunkRef<'_>> for SackChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&SackChunkRef<'_>> for SackChunk {
     fn from(value: &SackChunkRef<'_>) -> Self {
         let mut gap_ack_blocks = Vec::new();
@@ -2396,7 +2430,7 @@ impl<'a> SackChunkRef<'a> {
 
                 if bytes.len() < cmp::max(len, 16) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP SACK chunk for header and optional parameters",
@@ -2405,7 +2439,7 @@ impl<'a> SackChunkRef<'a> {
 
                 if len % 4 != 0 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "SCTP SACK chunk length must be a multiple of 4",
@@ -2414,7 +2448,7 @@ impl<'a> SackChunkRef<'a> {
 
                 if len < 16 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "length field of SCTP SACK chunk was too short for header",
@@ -2424,7 +2458,7 @@ impl<'a> SackChunkRef<'a> {
                 let (gap_ack_cnt, dup_tsn_cnt) = match (utils::to_array(bytes, 12), utils::to_array(bytes, 14)) {
                     (Some(gap_ack_cnt_arr), Some(dup_tsn_cnt_arr)) => (u16::from_be_bytes(gap_ack_cnt_arr) as usize, u16::from_be_bytes(dup_tsn_cnt_arr) as usize),
                     _ => return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP SACK chunk for Number of Duplicate TSNs field"
@@ -2433,7 +2467,7 @@ impl<'a> SackChunkRef<'a> {
 
                 if 16 + (gap_ack_cnt * 4) + (dup_tsn_cnt * 4) != len {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "SCTP SACK chunk Length field did not match the total length of header + Gap Ack Blocks + Duplicate TSNs"
@@ -2442,7 +2476,7 @@ impl<'a> SackChunkRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP SACK chunk",
@@ -2452,7 +2486,7 @@ impl<'a> SackChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP SACK chunk for header Length field",
@@ -2567,11 +2601,13 @@ impl<'b> Iterator for DuplicateTsnIterRef<'b> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct HeartbeatChunk {
     flags: u8,
     heartbeat: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl HeartbeatChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -2626,13 +2662,13 @@ impl HeartbeatChunk {
         writer.write_slice(&[CHUNK_TYPE_HEARTBEAT, self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&1u16.to_be_bytes())?; // HEARTBEAT_OPT_HEARTBEAT_INFO (the only option available for HEARTBEAT chunks)
         writer.write_slice(
             &u16::try_from(self.heartbeat.len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.heartbeat)?;
@@ -2644,6 +2680,7 @@ impl HeartbeatChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<HeartbeatChunkRef<'_>> for HeartbeatChunk {
     #[inline]
     fn from(value: HeartbeatChunkRef<'_>) -> Self {
@@ -2651,6 +2688,7 @@ impl From<HeartbeatChunkRef<'_>> for HeartbeatChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&HeartbeatChunkRef<'_>> for HeartbeatChunk {
     #[inline]
     fn from(value: &HeartbeatChunkRef<'_>) -> Self {
@@ -2686,7 +2724,7 @@ impl<'a> HeartbeatChunkRef<'a> {
 
                 if bytes.len() < cmp::max(len, 8) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP HEARTBEAT chunk for header + Heartbeat Info option",
@@ -2696,7 +2734,7 @@ impl<'a> HeartbeatChunkRef<'a> {
                 #[allow(unused_variables)]
                 if let Err(e) = HeartbeatInfoRef::validate(&bytes[4..len]) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: e.reason,
@@ -2706,7 +2744,7 @@ impl<'a> HeartbeatChunkRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason: "invalid nonzero padding values at end of SCTP HEARTBEAT chunk",
@@ -2716,7 +2754,7 @@ impl<'a> HeartbeatChunkRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP HEARTBEAT chunk",
@@ -2726,7 +2764,7 @@ impl<'a> HeartbeatChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP HEARTBEAT chunk for header",
@@ -2787,7 +2825,7 @@ impl<'a> HeartbeatInfoRef<'a> {
 
                 if len > bytes.len() {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP HEARTBEAT chunk Heartbeat Info option for Heartbeat field + padding bytes",
@@ -2796,7 +2834,7 @@ impl<'a> HeartbeatInfoRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]        
                         reason: "extra bytes remain at end of SCTP HEARTBEAT chunk Heartbeat Info option",
@@ -2806,7 +2844,7 @@ impl<'a> HeartbeatInfoRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason:
@@ -2837,11 +2875,13 @@ impl<'a> HeartbeatInfoRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct HeartbeatAckChunk {
     flags: u8,
     heartbeat: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl HeartbeatAckChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -2896,13 +2936,13 @@ impl HeartbeatAckChunk {
         writer.write_slice(&[CHUNK_TYPE_HEARTBEAT_ACK, self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&1u16.to_be_bytes())?; // HEARTBEAT_ACK_OPT_HEARTBEAT_INFO - the only option available, so we don't define it
         writer.write_slice(
             &u16::try_from(self.heartbeat.len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.heartbeat)?;
@@ -2914,6 +2954,7 @@ impl HeartbeatAckChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<HeartbeatAckChunkRef<'_>> for HeartbeatAckChunk {
     #[inline]
     fn from(value: HeartbeatAckChunkRef<'_>) -> Self {
@@ -2921,6 +2962,7 @@ impl From<HeartbeatAckChunkRef<'_>> for HeartbeatAckChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&HeartbeatAckChunkRef<'_>> for HeartbeatAckChunk {
     #[inline]
     fn from(value: &HeartbeatAckChunkRef<'_>) -> Self {
@@ -2955,7 +2997,7 @@ impl<'a> HeartbeatAckChunkRef<'a> {
 
                 if len > bytes.len() {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP HEARTBEAT ACK chunk for header + Heartbeat field",
@@ -2964,7 +3006,7 @@ impl<'a> HeartbeatAckChunkRef<'a> {
 
                 if len % 4 != 0 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "SCTP HEARTBEAT ACK chunk length was not a multiple of 4",
@@ -2975,7 +3017,7 @@ impl<'a> HeartbeatAckChunkRef<'a> {
 
                 if len < bytes.len() {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP HEARTBEAT ACK chunk",
@@ -2985,7 +3027,7 @@ impl<'a> HeartbeatAckChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP HEARTBEAT ACK chunk for header",
@@ -3021,11 +3063,13 @@ impl<'a> HeartbeatAckChunkRef<'a> {
 
 ///
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct AbortChunk {
     flags: AbortFlags,
     causes: Vec<ErrorCause>,
 }
 
+#[cfg(feature = "alloc")]
 impl AbortChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -3087,7 +3131,7 @@ impl AbortChunk {
         writer.write_slice(&[self.flags.bits()])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         for cause in &self.causes {
@@ -3098,6 +3142,7 @@ impl AbortChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<AbortChunkRef<'_>> for AbortChunk {
     #[inline]
     fn from(value: AbortChunkRef<'_>) -> Self {
@@ -3105,6 +3150,7 @@ impl From<AbortChunkRef<'_>> for AbortChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&AbortChunkRef<'_>> for AbortChunk {
     fn from(value: &AbortChunkRef<'_>) -> Self {
         let mut causes = Vec::new();
@@ -3144,7 +3190,7 @@ impl<'a> AbortChunkRef<'a> {
                 let len = u16::from_be_bytes(len_arr) as usize;
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -3154,7 +3200,7 @@ impl<'a> AbortChunkRef<'a> {
 
                 if chunk_type != CHUNK_TYPE_ABORT {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid Chunk Type field in SCTP ABORT chunk (must be equal to 6)",
@@ -3163,7 +3209,7 @@ impl<'a> AbortChunkRef<'a> {
 
                 if bytes.len() > 4 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP ABORT chunk",
@@ -3173,7 +3219,7 @@ impl<'a> AbortChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP ABORT chunk for header",
@@ -3268,6 +3314,7 @@ impl<'a> Iterator for ErrorCauseIterRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub enum ErrorCause {
     InvalidStreamIdentifier(StreamIdentifierError),
 
@@ -3299,6 +3346,7 @@ pub enum ErrorCause {
     Unknown(GenericParam),
 }
 
+#[cfg(feature = "alloc")]
 impl ErrorCause {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -3365,6 +3413,7 @@ impl ErrorCause {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<ErrorCauseRef<'_>> for ErrorCause {
     #[inline]
     fn from(value: ErrorCauseRef<'_>) -> Self {
@@ -3372,6 +3421,7 @@ impl From<ErrorCauseRef<'_>> for ErrorCause {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&ErrorCauseRef<'_>> for ErrorCause {
     fn from(value: &ErrorCauseRef<'_>) -> Self {
         match value {
@@ -3499,7 +3549,7 @@ impl<'a> ErrorCauseRef<'a> {
 
                     if len != 4 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason: "invalid length in SCTP Error Cause (must be equal to 4)",
@@ -3508,7 +3558,7 @@ impl<'a> ErrorCauseRef<'a> {
 
                     if bytes.len() > 4 {
                         Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::ExcessBytes(bytes.len() - 4),
                             #[cfg(feature = "error_string")]
                             reason: "extra bytes remain at end of SCTP 4-byte Error Cause",
@@ -3518,7 +3568,7 @@ impl<'a> ErrorCauseRef<'a> {
                     }
                 }
                 _ => Err(ValidationError {
-                    layer: Sctp::name(),
+                    layer: SctpRef::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason: "insufficient bytes in SCTP 4-byte Error Cause for header",
@@ -3531,7 +3581,7 @@ impl<'a> ErrorCauseRef<'a> {
 
                     if bytes.len() < cmp::max(8, len) {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InsufficientBytes,
                             #[cfg(feature = "error_string")]            
                             reason: "insufficient bytes in SCTP <unknown> Error Cause for header and data field",
@@ -3540,7 +3590,7 @@ impl<'a> ErrorCauseRef<'a> {
 
                     if unpadded_len < 8 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]            
                             reason: "invalid length in SCTP <unknown> Error Cause (must be at least 8 bytes)",
@@ -3549,7 +3599,7 @@ impl<'a> ErrorCauseRef<'a> {
 
                     if bytes.len() > len {
                         Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                             #[cfg(feature = "error_string")]
                             reason: "extra bytes remain at end of SCTP <unknown> Error Cause",
@@ -3559,7 +3609,7 @@ impl<'a> ErrorCauseRef<'a> {
                     }
                 }
                 _ => Err(ValidationError {
-                    layer: Sctp::name(),
+                    layer: SctpRef::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason: "insufficient bytes in SCTP <unknown> Error Cause for header",
@@ -3675,7 +3725,7 @@ impl<'a> StreamIdentifierErrorRef<'a> {
 
                 if bytes.len() < 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Invalid Stream Identifier option for header + Explanation field",
@@ -3684,7 +3734,7 @@ impl<'a> StreamIdentifierErrorRef<'a> {
 
                 if cause_code != ERR_CODE_INVALID_STREAM_ID {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Invalid Stream Identifier Option (must be equal to 1)",
@@ -3693,7 +3743,7 @@ impl<'a> StreamIdentifierErrorRef<'a> {
 
                 if len != 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid length in SCTP Invalid Stream Identifier Option (must be equal to 8)",
@@ -3702,7 +3752,7 @@ impl<'a> StreamIdentifierErrorRef<'a> {
 
                 if bytes.len() > 8 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 8),
                         #[cfg(feature = "error_string")]
                         reason:
@@ -3713,7 +3763,7 @@ impl<'a> StreamIdentifierErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Invalid Stream Identifier option for header",
@@ -3748,10 +3798,12 @@ impl<'a> StreamIdentifierErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct MissingParameterError {
     missing_params: Vec<u16>,
 }
 
+#[cfg(feature = "alloc")]
 impl MissingParameterError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -3796,12 +3848,12 @@ impl MissingParameterError {
         writer.write_slice(&ERR_CODE_MISSING_MAND_PARAM.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(
             &u32::try_from(self.missing_params.len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         for param in &self.missing_params {
@@ -3814,6 +3866,7 @@ impl MissingParameterError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<MissingParameterErrorRef<'_>> for MissingParameterError {
     #[inline]
     fn from(value: MissingParameterErrorRef<'_>) -> Self {
@@ -3821,6 +3874,7 @@ impl From<MissingParameterErrorRef<'_>> for MissingParameterError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&MissingParameterErrorRef<'_>> for MissingParameterError {
     #[inline]
     fn from(value: &MissingParameterErrorRef<'_>) -> Self {
@@ -3856,7 +3910,7 @@ impl<'a> MissingParameterErrorRef<'a> {
 
                 if bytes.len() < cmp::max(8, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Missing Mandatory Parameter option for header + Missing Parameter fields",
@@ -3865,7 +3919,7 @@ impl<'a> MissingParameterErrorRef<'a> {
 
                 if cause_code != ERR_CODE_MISSING_MAND_PARAM {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Missing Mandatory Parameter option (must be equal to 2)",
@@ -3874,7 +3928,7 @@ impl<'a> MissingParameterErrorRef<'a> {
 
                 if unpadded_len < 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid length in SCTP Missing Mandatory Parameter option (must be at least 8 bytes long)",
@@ -3883,7 +3937,7 @@ impl<'a> MissingParameterErrorRef<'a> {
 
                 if unpadded_len % 2 != 0 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid length in SCTP Missing Mandatory Parameter option (must be a multiple of 2)",
@@ -3893,7 +3947,7 @@ impl<'a> MissingParameterErrorRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]            
                             reason: "invalid nonzero padding values at end of SCTP Missing Mandatory Parameter Option",
@@ -3903,7 +3957,7 @@ impl<'a> MissingParameterErrorRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of Missing Mandatory Parameter option",
@@ -3913,7 +3967,7 @@ impl<'a> MissingParameterErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Missing Mandatory Parameter option for header",
@@ -3973,10 +4027,12 @@ impl<'a> Iterator for MissingParameterIterRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct StaleCookieError {
     staleness: u32,
 }
 
+#[cfg(feature = "alloc")]
 impl StaleCookieError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -4025,6 +4081,7 @@ impl StaleCookieError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<StaleCookieErrorRef<'_>> for StaleCookieError {
     #[inline]
     fn from(value: StaleCookieErrorRef<'_>) -> Self {
@@ -4032,6 +4089,7 @@ impl From<StaleCookieErrorRef<'_>> for StaleCookieError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&StaleCookieErrorRef<'_>> for StaleCookieError {
     #[inline]
     fn from(value: &StaleCookieErrorRef<'_>) -> Self {
@@ -4066,7 +4124,7 @@ impl<'a> StaleCookieErrorRef<'a> {
 
                 if bytes.len() < 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Stale Cookie option for header + Measure of Staleness field",
@@ -4075,7 +4133,7 @@ impl<'a> StaleCookieErrorRef<'a> {
 
                 if cause_code != ERR_CODE_STALE_COOKIE {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -4085,7 +4143,7 @@ impl<'a> StaleCookieErrorRef<'a> {
 
                 if len != 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP Stale Cookie option (must be equal to 8)",
@@ -4094,7 +4152,7 @@ impl<'a> StaleCookieErrorRef<'a> {
 
                 if bytes.len() > 8 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 8),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP Stale Cookie option",
@@ -4104,7 +4162,7 @@ impl<'a> StaleCookieErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Stale Cookie option for header",
@@ -4134,10 +4192,12 @@ impl<'a> StaleCookieErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct UnresolvableAddrError {
     addr: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl UnresolvableAddrError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -4186,7 +4246,7 @@ impl UnresolvableAddrError {
         writer.write_slice(&ERR_CODE_UNRESOLVABLE_ADDRESS.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.addr)?;
@@ -4198,6 +4258,7 @@ impl UnresolvableAddrError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<UnresolvableAddrErrorRef<'_>> for UnresolvableAddrError {
     #[inline]
     fn from(value: UnresolvableAddrErrorRef<'_>) -> Self {
@@ -4205,6 +4266,7 @@ impl From<UnresolvableAddrErrorRef<'_>> for UnresolvableAddrError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&UnresolvableAddrErrorRef<'_>> for UnresolvableAddrError {
     #[inline]
     fn from(value: &UnresolvableAddrErrorRef<'_>) -> Self {
@@ -4240,7 +4302,7 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Unresolvable Address option for header + Unresolvable Address field",
@@ -4249,7 +4311,7 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
 
                 if cause_code != ERR_CODE_UNRESOLVABLE_ADDRESS {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Unresolvable Address option (must be equal to 5)",
@@ -4258,7 +4320,7 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
 
                 if unpadded_len < 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid length in SCTP Unresolvable Address option (must be at least 4 bytes long)",
@@ -4268,7 +4330,7 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]            
                             reason: "invalid nonzero padding values at end of SCTP Unresolvable Address 4ption",
@@ -4278,7 +4340,7 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP Unresolvable Address option",
@@ -4288,7 +4350,7 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Unresolvable Address option for header",
@@ -4318,10 +4380,12 @@ impl<'a> UnresolvableAddrErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct UnrecognizedChunkError {
     chunk: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl UnrecognizedChunkError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -4375,6 +4439,7 @@ impl UnrecognizedChunkError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<UnrecognizedChunkErrorRef<'_>> for UnrecognizedChunkError {
     #[inline]
     fn from(value: UnrecognizedChunkErrorRef<'_>) -> Self {
@@ -4382,6 +4447,7 @@ impl From<UnrecognizedChunkErrorRef<'_>> for UnrecognizedChunkError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&UnrecognizedChunkErrorRef<'_>> for UnrecognizedChunkError {
     #[inline]
     fn from(value: &UnrecognizedChunkErrorRef<'_>) -> Self {
@@ -4416,7 +4482,7 @@ impl<'a> UnrecognizedChunkErrorRef<'a> {
 
                 if bytes.len() < cmp::max(8, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Unrecognized Chunk option for header + Unrecognized Chunk field",
@@ -4425,7 +4491,7 @@ impl<'a> UnrecognizedChunkErrorRef<'a> {
 
                 if cause_code != ERR_CODE_UNRECOGNIZED_CHUNK {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Unrecognized Chunk option (must be equal to 6)",
@@ -4434,7 +4500,7 @@ impl<'a> UnrecognizedChunkErrorRef<'a> {
 
                 if bytes.len() > 8 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP Unrecognized Chunk option",
@@ -4444,7 +4510,7 @@ impl<'a> UnrecognizedChunkErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Unrecognized Chunk option for header",
@@ -4474,10 +4540,12 @@ impl<'a> UnrecognizedChunkErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct UnrecognizedParamError {
     params: Vec<GenericParam>,
 }
 
+#[cfg(feature = "alloc")]
 impl UnrecognizedParamError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -4527,7 +4595,7 @@ impl UnrecognizedParamError {
         writer.write_slice(&ERR_CODE_UNRECOGNIZED_PARAMS.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         for param in self.params.iter() {
@@ -4538,6 +4606,7 @@ impl UnrecognizedParamError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<UnrecognizedParamErrorRef<'_>> for UnrecognizedParamError {
     #[inline]
     fn from(value: UnrecognizedParamErrorRef<'_>) -> Self {
@@ -4545,6 +4614,7 @@ impl From<UnrecognizedParamErrorRef<'_>> for UnrecognizedParamError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&UnrecognizedParamErrorRef<'_>> for UnrecognizedParamError {
     fn from(value: &UnrecognizedParamErrorRef<'_>) -> Self {
         let mut params = Vec::new();
@@ -4582,7 +4652,7 @@ impl<'a> UnrecognizedParamErrorRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Unrecognized Parameters Option for header and Unrecognized Chunk field",
@@ -4591,7 +4661,7 @@ impl<'a> UnrecognizedParamErrorRef<'a> {
 
                 if cause_code != ERR_CODE_UNRECOGNIZED_PARAMS {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Unrecognized Parameters option (must be equal to 8)",
@@ -4600,7 +4670,7 @@ impl<'a> UnrecognizedParamErrorRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP Unrecognized Parameters option",
@@ -4610,7 +4680,7 @@ impl<'a> UnrecognizedParamErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Unrecognized Parameters option for header",
@@ -4760,7 +4830,7 @@ impl<'a> NoUserDataErrorRef<'a> {
 
                 if bytes.len() < 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP No User Data option for header and explanation field",
@@ -4769,7 +4839,7 @@ impl<'a> NoUserDataErrorRef<'a> {
 
                 if cause_code != ERR_CODE_NO_USER_DATA {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -4779,7 +4849,7 @@ impl<'a> NoUserDataErrorRef<'a> {
 
                 if len != 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP No User Data option (must be equal to 8)",
@@ -4788,7 +4858,7 @@ impl<'a> NoUserDataErrorRef<'a> {
 
                 if bytes.len() > 8 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 8),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP No User Data option",
@@ -4798,7 +4868,7 @@ impl<'a> NoUserDataErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP No User Data option for header",
@@ -4828,10 +4898,12 @@ impl<'a> NoUserDataErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct AssociationNewAddrError {
     tlvs: Vec<GenericParam>,
 }
 
+#[cfg(feature = "alloc")]
 impl AssociationNewAddrError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -4881,7 +4953,7 @@ impl AssociationNewAddrError {
         writer.write_slice(&ERR_CODE_RESTART_ASSOC_NEW_ADDR.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         for tlv in self.tlvs.iter() {
@@ -4892,6 +4964,7 @@ impl AssociationNewAddrError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<AssociationNewAddrErrorRef<'_>> for AssociationNewAddrError {
     #[inline]
     fn from(value: AssociationNewAddrErrorRef<'_>) -> Self {
@@ -4899,6 +4972,7 @@ impl From<AssociationNewAddrErrorRef<'_>> for AssociationNewAddrError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&AssociationNewAddrErrorRef<'_>> for AssociationNewAddrError {
     #[inline]
     fn from(value: &AssociationNewAddrErrorRef<'_>) -> Self {
@@ -4937,7 +5011,7 @@ impl<'a> AssociationNewAddrErrorRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Restart of Association with New Address option for header + New Address TLVs field",
@@ -4946,7 +5020,7 @@ impl<'a> AssociationNewAddrErrorRef<'a> {
 
                 if cause_code != ERR_CODE_RESTART_ASSOC_NEW_ADDR {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Restart of Association with New Address option (must be equal to 11)",
@@ -4955,7 +5029,7 @@ impl<'a> AssociationNewAddrErrorRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]        
                         reason: "extra bytes remain at end of SCTP Restart of Association with New Address option",
@@ -4965,7 +5039,7 @@ impl<'a> AssociationNewAddrErrorRef<'a> {
                 }
             },
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Restart of Association with New Address option for header"
@@ -4995,10 +5069,12 @@ impl<'a> AssociationNewAddrErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct UserInitiatedAbortError {
     reason: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl UserInitiatedAbortError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -5048,7 +5124,7 @@ impl UserInitiatedAbortError {
         writer.write_slice(&ERR_CODE_USER_INITIATED_ABORT.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.reason)?;
@@ -5060,6 +5136,7 @@ impl UserInitiatedAbortError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<UserInitiatedAbortErrorRef<'_>> for UserInitiatedAbortError {
     #[inline]
     fn from(value: UserInitiatedAbortErrorRef<'_>) -> Self {
@@ -5067,6 +5144,7 @@ impl From<UserInitiatedAbortErrorRef<'_>> for UserInitiatedAbortError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&UserInitiatedAbortErrorRef<'_>> for UserInitiatedAbortError {
     #[inline]
     fn from(value: &UserInitiatedAbortErrorRef<'_>) -> Self {
@@ -5101,7 +5179,7 @@ impl<'a> UserInitiatedAbortErrorRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP User-Initiated Abort option for header + Reason field",
@@ -5110,7 +5188,7 @@ impl<'a> UserInitiatedAbortErrorRef<'a> {
 
                 if cause_code != ERR_CODE_USER_INITIATED_ABORT {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP User-Initiated Abort option (must be equal to 12)",
@@ -5119,7 +5197,7 @@ impl<'a> UserInitiatedAbortErrorRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP User-Initiated Abort option",
@@ -5129,7 +5207,7 @@ impl<'a> UserInitiatedAbortErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP User-Initiated Abort option for header",
@@ -5159,10 +5237,12 @@ impl<'a> UserInitiatedAbortErrorRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct ProtocolViolationError {
     information: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl ProtocolViolationError {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -5212,7 +5292,7 @@ impl ProtocolViolationError {
         writer.write_slice(&ERR_CODE_PROTOCOL_VIOLATION.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.information)?;
@@ -5224,6 +5304,7 @@ impl ProtocolViolationError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<ProtocolViolationErrorRef<'_>> for ProtocolViolationError {
     #[inline]
     fn from(value: ProtocolViolationErrorRef<'_>) -> Self {
@@ -5231,6 +5312,7 @@ impl From<ProtocolViolationErrorRef<'_>> for ProtocolViolationError {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&ProtocolViolationErrorRef<'_>> for ProtocolViolationError {
     #[inline]
     fn from(value: &ProtocolViolationErrorRef<'_>) -> Self {
@@ -5265,7 +5347,7 @@ impl<'a> ProtocolViolationErrorRef<'a> {
 
                 if bytes.len() < cmp::max(8, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP Protocol Violation option for header + Additional Information field",
@@ -5274,7 +5356,7 @@ impl<'a> ProtocolViolationErrorRef<'a> {
 
                 if cause_code != ERR_CODE_PROTOCOL_VIOLATION {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid cause code in SCTP Protocol Violation option (must be equal to 13)",
@@ -5283,7 +5365,7 @@ impl<'a> ProtocolViolationErrorRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP Protocol Violation option",
@@ -5293,7 +5375,7 @@ impl<'a> ProtocolViolationErrorRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Protocol Violation option for header",
@@ -5337,11 +5419,13 @@ impl<'a> ProtocolViolationErrorRef<'a> {
 ///    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct GenericParam {
     param_type: u16,
     value: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl GenericParam {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -5396,7 +5480,7 @@ impl GenericParam {
         writer.write_slice(&self.param_type.to_be_bytes())?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.value)?;
@@ -5408,6 +5492,7 @@ impl GenericParam {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<GenericParamRef<'_>> for GenericParam {
     #[inline]
     fn from(value: GenericParamRef<'_>) -> Self {
@@ -5415,6 +5500,7 @@ impl From<GenericParamRef<'_>> for GenericParam {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&GenericParamRef<'_>> for GenericParam {
     #[inline]
     fn from(value: &GenericParamRef<'_>) -> Self {
@@ -5465,7 +5551,7 @@ impl<'a> GenericParamRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "insufficient bytes in SCTP Parameter for header + Value field",
@@ -5474,7 +5560,7 @@ impl<'a> GenericParamRef<'a> {
 
                 if unpadded_len < 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP Parameter (must be at least 4 bytes long)",
@@ -5484,7 +5570,7 @@ impl<'a> GenericParamRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason: "invalid nonzero padding values at end of SCTP Parameter",
@@ -5494,7 +5580,7 @@ impl<'a> GenericParamRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP Parameter",
@@ -5504,7 +5590,7 @@ impl<'a> GenericParamRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP Parameter for header",
@@ -5644,7 +5730,7 @@ impl<'a> ShutdownChunkRef<'a> {
 
                 if bytes.len() < 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]        
                         reason: "insufficient bytes in SCTP SHUTDOWN chunk for header + Cumulative TSN Ack field",
@@ -5653,7 +5739,7 @@ impl<'a> ShutdownChunkRef<'a> {
 
                 if chunk_type != CHUNK_TYPE_SHUTDOWN {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -5663,7 +5749,7 @@ impl<'a> ShutdownChunkRef<'a> {
 
                 if len != 8 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP SHUTDOWN chunk (must be equal to 8)",
@@ -5672,7 +5758,7 @@ impl<'a> ShutdownChunkRef<'a> {
 
                 if bytes.len() > 8 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 8),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP SHUTDOWN chunk",
@@ -5682,7 +5768,7 @@ impl<'a> ShutdownChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP SHUTDOWN chunk for header",
@@ -5806,7 +5892,7 @@ impl<'a> ShutdownAckChunkRef<'a> {
                 let len = u16::from_be_bytes(len_arr) as usize;
                 if chunk_type != CHUNK_TYPE_SHUTDOWN_ACK {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]        
                         reason: "invalid Chunk Type field in SCTP SHUTDOWN ACK chunk (must be equal to 8)",
@@ -5815,7 +5901,7 @@ impl<'a> ShutdownAckChunkRef<'a> {
 
                 if len != 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP SHUTDOWN ACK chunk (must be equal to 4)",
@@ -5824,7 +5910,7 @@ impl<'a> ShutdownAckChunkRef<'a> {
 
                 if bytes.len() > 4 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 4),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP SHUTDOWN ACK chunk",
@@ -5834,7 +5920,7 @@ impl<'a> ShutdownAckChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP SHUTDOWN ACK chunk for header",
@@ -5864,11 +5950,13 @@ impl<'a> ShutdownAckChunkRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct ErrorChunk {
     flags: u8,
     causes: Vec<ErrorCause>,
 }
 
+#[cfg(feature = "alloc")]
 impl ErrorChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -5928,7 +6016,7 @@ impl ErrorChunk {
         writer.write_slice(&[CHUNK_TYPE_ERROR, self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         for cause in &self.causes {
@@ -5939,6 +6027,7 @@ impl ErrorChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<ErrorChunkRef<'_>> for ErrorChunk {
     #[inline]
     fn from(value: ErrorChunkRef<'_>) -> Self {
@@ -5946,6 +6035,7 @@ impl From<ErrorChunkRef<'_>> for ErrorChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&ErrorChunkRef<'_>> for ErrorChunk {
     fn from(value: &ErrorChunkRef<'_>) -> Self {
         let mut causes = Vec::new();
@@ -5984,7 +6074,7 @@ impl<'a> ErrorChunkRef<'a> {
                 let len = u16::from_be_bytes(len_arr) as usize;
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -5994,7 +6084,7 @@ impl<'a> ErrorChunkRef<'a> {
 
                 if chunk_type != CHUNK_TYPE_ERROR {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid Chunk Type field in SCTP ERROR chunk (must be equal to 9)",
@@ -6003,7 +6093,7 @@ impl<'a> ErrorChunkRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP ERROR chunk",
@@ -6013,7 +6103,7 @@ impl<'a> ErrorChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP ERROR chunk for header",
@@ -6050,11 +6140,13 @@ impl<'a> ErrorChunkRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct CookieEchoChunk {
     flags: u8,
     cookie: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl CookieEchoChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -6114,7 +6206,7 @@ impl CookieEchoChunk {
         writer.write_slice(&[CHUNK_TYPE_COOKIE_ECHO, self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.cookie)?;
@@ -6126,6 +6218,7 @@ impl CookieEchoChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<CookieEchoChunkRef<'_>> for CookieEchoChunk {
     #[inline]
     fn from(value: CookieEchoChunkRef<'_>) -> Self {
@@ -6133,6 +6226,7 @@ impl From<CookieEchoChunkRef<'_>> for CookieEchoChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&CookieEchoChunkRef<'_>> for CookieEchoChunk {
     #[inline]
     fn from(value: &CookieEchoChunkRef<'_>) -> Self {
@@ -6168,7 +6262,7 @@ impl<'a> CookieEchoChunkRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -6178,7 +6272,7 @@ impl<'a> CookieEchoChunkRef<'a> {
 
                 if unpadded_len < 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP COOKIE ECHO chunk (must be at least 4 octets long)",
@@ -6187,7 +6281,7 @@ impl<'a> CookieEchoChunkRef<'a> {
 
                 if chunk_type != CHUNK_TYPE_COOKIE_ECHO {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid Chunk Type field in SCTP COOKIE ECHO chunk (must be equal to 10)",
@@ -6197,7 +6291,7 @@ impl<'a> CookieEchoChunkRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason:
@@ -6208,7 +6302,7 @@ impl<'a> CookieEchoChunkRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP COOKIE ECHO hunk",
@@ -6218,7 +6312,7 @@ impl<'a> CookieEchoChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP COOKIE ECHO chunk for header",
@@ -6253,10 +6347,12 @@ impl<'a> CookieEchoChunkRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct CookieAckChunk {
     flags: u8,
 }
 
+#[cfg(feature = "alloc")]
 impl CookieAckChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -6304,6 +6400,7 @@ impl CookieAckChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<CookieAckChunkRef<'_>> for CookieAckChunk {
     #[inline]
     fn from(value: CookieAckChunkRef<'_>) -> Self {
@@ -6311,6 +6408,7 @@ impl From<CookieAckChunkRef<'_>> for CookieAckChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&CookieAckChunkRef<'_>> for CookieAckChunk {
     #[inline]
     fn from(value: &CookieAckChunkRef<'_>) -> Self {
@@ -6343,7 +6441,7 @@ impl<'a> CookieAckChunkRef<'a> {
                 let len = u16::from_be_bytes(len_arr) as usize;
                 if chunk_type != CHUNK_TYPE_COOKIE_ACK {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -6353,7 +6451,7 @@ impl<'a> CookieAckChunkRef<'a> {
 
                 if len != 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid length in SCTP COOKIE_ACK chunk (must be equal to 4)",
@@ -6362,7 +6460,7 @@ impl<'a> CookieAckChunkRef<'a> {
 
                 if bytes.len() > 4 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 4),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP COOKIE ACK chunk",
@@ -6372,7 +6470,7 @@ impl<'a> CookieAckChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP COOKIE ACK chunk for header",
@@ -6402,10 +6500,12 @@ impl<'a> CookieAckChunkRef<'a> {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct ShutdownCompleteChunk {
     flags: ShutdownCompleteFlags,
 }
 
+#[cfg(feature = "alloc")]
 impl ShutdownCompleteChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -6453,6 +6553,7 @@ impl ShutdownCompleteChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<ShutdownCompleteChunkRef<'_>> for ShutdownCompleteChunk {
     #[inline]
     fn from(value: ShutdownCompleteChunkRef<'_>) -> Self {
@@ -6460,6 +6561,7 @@ impl From<ShutdownCompleteChunkRef<'_>> for ShutdownCompleteChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&ShutdownCompleteChunkRef<'_>> for ShutdownCompleteChunk {
     #[inline]
     fn from(value: &ShutdownCompleteChunkRef<'_>) -> Self {
@@ -6492,7 +6594,7 @@ impl<'a> ShutdownCompleteChunkRef<'a> {
                 let len = u16::from_be_bytes(len_arr) as usize;
                 if chunk_type != CHUNK_TYPE_SHUTDOWN_COMPLETE {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason: "invalid Chunk Type field in SCTP SHUTDOWN COMPLETE chunk (must be equal to 14)",
@@ -6501,7 +6603,7 @@ impl<'a> ShutdownCompleteChunkRef<'a> {
 
                 if len != 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -6511,7 +6613,7 @@ impl<'a> ShutdownCompleteChunkRef<'a> {
 
                 if bytes.len() > 4 {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - 4),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP SHUTDOWN COMPLETE chunk",
@@ -6521,7 +6623,7 @@ impl<'a> ShutdownCompleteChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP SHUTDOWN COMPLETE chunk for header",
@@ -6572,12 +6674,14 @@ bitflags! {
 ///    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
 #[derive(Clone, Debug)]
+#[cfg(feature = "alloc")]
 pub struct UnknownChunk {
     chunk_type: u8,
     flags: u8,
     value: Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl UnknownChunk {
     #[inline]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ValidationError> {
@@ -6637,7 +6741,7 @@ impl UnknownChunk {
         writer.write_slice(&[self.chunk_type, self.flags])?;
         writer.write_slice(
             &u16::try_from(self.unpadded_len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .map_err(|_| SerializationError::length_encoding(SctpRef::name()))?
                 .to_be_bytes(),
         )?;
         writer.write_slice(&self.value)?;
@@ -6650,6 +6754,7 @@ impl UnknownChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<UnknownChunkRef<'_>> for UnknownChunk {
     #[inline]
     fn from(value: UnknownChunkRef<'_>) -> Self {
@@ -6657,6 +6762,7 @@ impl From<UnknownChunkRef<'_>> for UnknownChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl From<&UnknownChunkRef<'_>> for UnknownChunk {
     #[inline]
     fn from(value: &UnknownChunkRef<'_>) -> Self {
@@ -6707,7 +6813,7 @@ impl<'a> UnknownChunkRef<'a> {
 
                 if bytes.len() < cmp::max(4, len) {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "insufficient bytes in SCTP <unknown> chunk for header/Value field",
@@ -6716,7 +6822,7 @@ impl<'a> UnknownChunkRef<'a> {
 
                 if unpadded_len < 4 {
                     return Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::InvalidValue,
                         #[cfg(feature = "error_string")]
                         reason:
@@ -6727,7 +6833,7 @@ impl<'a> UnknownChunkRef<'a> {
                 for b in bytes.iter().take(len).skip(unpadded_len) {
                     if *b != 0 {
                         return Err(ValidationError {
-                            layer: Sctp::name(),
+                            layer: SctpRef::name(),
                             class: ValidationErrorClass::InvalidValue,
                             #[cfg(feature = "error_string")]
                             reason: "invalid nonzero padding values at end of SCTP <unknown> chunk",
@@ -6737,7 +6843,7 @@ impl<'a> UnknownChunkRef<'a> {
 
                 if bytes.len() > len {
                     Err(ValidationError {
-                        layer: Sctp::name(),
+                        layer: SctpRef::name(),
                         class: ValidationErrorClass::ExcessBytes(bytes.len() - len),
                         #[cfg(feature = "error_string")]
                         reason: "extra bytes remain at end of SCTP <unknown> chunk",
@@ -6747,7 +6853,7 @@ impl<'a> UnknownChunkRef<'a> {
                 }
             }
             _ => Err(ValidationError {
-                layer: Sctp::name(),
+                layer: SctpRef::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes in SCTP <unknown> chunk for header",
@@ -6804,6 +6910,7 @@ impl<'a> UnknownChunkRef<'a> {
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(SctpDataChunkMetadata)]
 #[ref_type(SctpDataChunkRef)]
+#[cfg(feature = "alloc")]
 pub struct SctpDataChunk {
     flags: DataChunkFlags,
     tsn: u32,
@@ -6813,6 +6920,7 @@ pub struct SctpDataChunk {
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl SctpDataChunk {
     /// Converts the given bytes into a [`struct@SctpDataChunk`] instance, returning an error if the bytes are
     /// not well-formed.
@@ -6925,6 +7033,7 @@ impl SctpDataChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for SctpDataChunk {
     #[inline]
     fn len(&self) -> usize {
@@ -6936,6 +7045,7 @@ impl LayerLength for SctpDataChunk {
 }
 
 #[allow(unused_variables)]
+#[cfg(feature = "alloc")]
 impl LayerObject for SctpDataChunk {
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool {
         true // SCTP supports arbitrary payloads
@@ -6972,6 +7082,7 @@ impl LayerObject for SctpDataChunk {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for SctpDataChunk {
     fn to_bytes_checksummed(
         &self,
@@ -7003,6 +7114,7 @@ impl ToBytes for SctpDataChunk {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for SctpDataChunk {
     fn from_bytes_current_layer_unchecked(bytes: &[u8]) -> Self {
         let data = SctpDataChunkRef::from_bytes_unchecked(bytes);
@@ -7149,7 +7261,7 @@ impl Validate for SctpDataChunkRef<'_> {
         let len = match utils::to_array(curr_layer, 2) {
             None => {
                 return Err(ValidationError {
-                    layer: SctpDataChunk::name(),
+                    layer: Self::name(),
                     class: ValidationErrorClass::InsufficientBytes,
                     #[cfg(feature = "error_string")]
                     reason: "SCTP DATA chunk must have a minimum of 16 bytes for its header",
@@ -7161,7 +7273,7 @@ impl Validate for SctpDataChunkRef<'_> {
         let payload_type = curr_layer[0]; // This won't panic because we've already retrieved bytes at index 2
         if payload_type != 0 {
             return Err(ValidationError {
-                layer: SctpDataChunk::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "invalid Chunk Type field in SCTP DATA chunk (must be equal to 0)",
@@ -7170,7 +7282,7 @@ impl Validate for SctpDataChunkRef<'_> {
 
         if len < 17 {
             return Err(ValidationError {
-                layer: SctpDataChunk::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InvalidValue,
                 #[cfg(feature = "error_string")]
                 reason: "packet length field had invalid value (insufficient length to cover packet header and at least one byte of data) for SCTP DATA chunk",
@@ -7186,7 +7298,7 @@ impl Validate for SctpDataChunkRef<'_> {
         let padded_len = data.chunk_len_padded();
         if padded_len > curr_layer.len() {
             return Err(ValidationError {
-                layer: SctpDataChunk::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes for User Data portion of SCTP DATA chunk",
@@ -7200,7 +7312,7 @@ impl Validate for SctpDataChunkRef<'_> {
         for b in curr_layer.iter().take(padded_len).skip(len) {
             if *b != 0 {
                 return Err(ValidationError {
-                    layer: SctpDataChunk::name(),
+                    layer: Self::name(),
                     class: ValidationErrorClass::UnusualPadding,
                     #[cfg(feature = "error_string")]
                     reason: "padding at end of SCTP DATA chunk had a non-zero value",
@@ -7210,7 +7322,7 @@ impl Validate for SctpDataChunkRef<'_> {
 
         if padded_len < curr_layer.len() {
             Err(ValidationError {
-                layer: SctpDataChunk::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::ExcessBytes(curr_layer.len() - padded_len),
                 #[cfg(feature = "error_string")]
                 reason: "SCTP DATA chunk had additional trailing bytes at the end of its data",

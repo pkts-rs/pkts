@@ -1,5 +1,8 @@
+use core::cmp;
 use core::ops::{Index, Range, RangeFrom, RangeInclusive, RangeTo};
-use std::cmp;
+
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
+use alloc::vec::Vec;
 
 use crate::layers::dev_traits::LayerName;
 use crate::prelude::*;
@@ -21,6 +24,7 @@ impl<'a, T: PacketWritable> PacketWriter<'a, T> {
 
     /// Constructs a new writer with errors reported as originating from `layer_naem`.
     #[inline]
+    #[cfg(feature = "alloc")]
     pub(crate) fn new_with_layer(writable: &'a mut T, layer_name: &'static str) -> Self {
         Self {
             writable,
@@ -155,6 +159,7 @@ pub trait PacketWritable:
     fn truncate(&mut self, pos: usize) -> Result<(), IndexedWriteError>;
 }
 
+#[cfg(feature = "alloc")]
 impl PacketWritable for Vec<u8> {
     #[inline]
     fn write_slice(&mut self, data: &[u8]) -> Result<(), IndexedWriteError> {

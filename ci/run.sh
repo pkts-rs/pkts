@@ -25,19 +25,22 @@ do
     sleep 1
 done
 
-case "${OS}" in
-    windows*)
-        cargo test --features wintun
+echo "Testing default features"
 
-        cargo test --features wintun-runtime
+cargo test
 
-        cargo test --features tapwin6
+echo "Testing no default features (no std, no alloc)"
 
-        cargo test --features tapwin6-runtime
-        ;;
-    *)
-        # No extra features in any platform other than windows
+cargo test --no-default-features
 
-        cargo test
-        ;;
-esac
+echo "Testing only alloc"
+
+cargo test --features alloc
+
+echo "Testing std without error strings or custom layer selection"
+
+cargo test --features std
+
+echo "Testing no-std,no-alloc with error strings and custom layer selection"
+
+cargo test --features custom_layer_selection,error_string

@@ -8,11 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 use crate::error::*;
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+#[cfg(feature = "alloc")]
 use crate::writer::PacketWriter;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -23,12 +26,15 @@ use alloc::vec::Vec;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(ExampleMetadata)]
 #[ref_type(ExampleRef)]
+#[cfg(feature = "alloc")]
 pub struct Example {}
 
+#[cfg(feature = "alloc")]
 impl Example {}
 
 #[doc(hidden)]
 #[allow(unused_variables)]
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for Example {
     fn payload_from_bytes_unchecked_default(&mut self, bytes: &[u8]) {
         todo!()
@@ -39,6 +45,7 @@ impl FromBytesCurrent for Example {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Example {
     fn len(&self) -> usize {
         todo!()
@@ -46,6 +53,7 @@ impl LayerLength for Example {
 }
 
 #[allow(unused_variables)]
+#[cfg(feature = "alloc")]
 impl LayerObject for Example {
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool {
         todo!()
@@ -71,6 +79,7 @@ impl LayerObject for Example {
 }
 
 #[allow(unused_variables)]
+#[cfg(feature = "alloc")]
 impl ToBytes for Example {
     fn to_bytes_checksummed(
         &self,

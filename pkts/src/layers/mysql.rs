@@ -12,16 +12,21 @@
 //!
 
 use core::cmp::Ordering;
-use core::convert::{TryFrom, TryInto};
+#[cfg(feature = "alloc")]
 use core::slice;
 
+#[cfg(feature = "alloc")]
 use super::Raw;
+use super::RawRef;
 use crate::error::*;
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+#[cfg(feature = "alloc")]
 use crate::writer::PacketWriter;
 
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -42,11 +47,13 @@ use alloc::vec::Vec;
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(MysqlPacketMetadata)]
 #[ref_type(MysqlPacketRef)]
+#[cfg(feature = "alloc")]
 pub struct MysqlPacket {
     sequence_id: u8,
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl MysqlPacket {
     #[inline]
     pub fn sequence_id(&self) -> u8 {
@@ -65,6 +72,7 @@ impl MysqlPacket {
 }
 
 #[doc(hidden)]
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for MysqlPacket {
     #[inline]
     fn payload_from_bytes_unchecked_default(&mut self, bytes: &[u8]) {
@@ -82,6 +90,7 @@ impl FromBytesCurrent for MysqlPacket {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for MysqlPacket {
     #[inline]
     fn len(&self) -> usize {
@@ -89,6 +98,7 @@ impl LayerLength for MysqlPacket {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for MysqlPacket {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -128,6 +138,7 @@ impl LayerObject for MysqlPacket {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for MysqlPacket {
     fn to_bytes_checksummed(
         &self,
@@ -189,7 +200,7 @@ impl<'a> LayerOffset for MysqlPacketRef<'a> {
             return None;
         }
 
-        if layer_type == Raw::layer_id() {
+        if layer_type == RawRef::layer_id() {
             Some(4)
         } else {
             None
@@ -201,7 +212,7 @@ impl<'a> Validate for MysqlPacketRef<'a> {
     fn validate_current_layer(curr_layer: &[u8]) -> Result<(), ValidationError> {
         if curr_layer.len() < 4 {
             return Err(ValidationError {
-                layer: MysqlPacket::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes for MySQL Packet header (4 bytes required)",
@@ -214,13 +225,13 @@ impl<'a> Validate for MysqlPacketRef<'a> {
 
         match curr_layer[4..].len().cmp(&payload_len) {
             Ordering::Less => Err(ValidationError {
-                layer: MysqlPacket::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes for packet length advertised by MySQL header",
             }),
             Ordering::Greater => Err(ValidationError {
-                layer: MysqlPacket::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::ExcessBytes(curr_layer[4..].len() - payload_len),
                 #[cfg(feature = "error_string")]
                 reason:
@@ -240,17 +251,20 @@ impl<'a> Validate for MysqlPacketRef<'a> {
 #[derive(Clone, Debug, Layer)]
 #[metadata_type(MysqlClientMetadata)]
 #[ref_type(MysqlClientRef)]
+#[cfg(feature = "alloc")]
 pub struct MysqlClient {
     pub sequence_id: u8,
     pub payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for MysqlClient {
     fn len(&self) -> usize {
         todo!()
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for MysqlClient {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -289,6 +303,7 @@ impl LayerObject for MysqlClient {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for MysqlClient {
     fn to_bytes_checksummed(
         &self,
@@ -300,6 +315,7 @@ impl ToBytes for MysqlClient {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> From<&MysqlClientRef<'a>> for MysqlClient {
     fn from(_value: &MysqlClientRef<'a>) -> Self {
         todo!()

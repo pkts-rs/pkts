@@ -27,11 +27,13 @@ pub mod session;
 pub mod utils;
 pub mod writer;
 
+#[cfg(feature = "alloc")]
 mod private {
     pub trait Sealed {}
 }
 
 #[cfg(test)]
+#[cfg(feature = "alloc")]
 mod tests {
     use crate::layers::udp::*;
     use crate::sequence::ipv4::*;

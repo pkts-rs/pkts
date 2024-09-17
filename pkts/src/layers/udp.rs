@@ -20,19 +20,29 @@
 //! may use heap allocations) or [`UdpBuilder`], which constructs a UDP packet entirely within
 //! a stack-allocated byte array.
 
+use core::cmp;
 use core::convert::{TryFrom, TryInto};
 use core::fmt::Debug;
-use core::{cmp, slice};
+#[cfg(feature = "alloc")]
+use core::slice;
 
+#[cfg(feature = "alloc")]
 use super::ip::{Ipv4, Ipv6, DATA_PROTO_UDP};
+use super::RawRef;
+use crate::error::*;
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+#[cfg(feature = "alloc")]
 use crate::layers::Raw;
+#[cfg(feature = "alloc")]
+use crate::utils;
+#[cfg(feature = "alloc")]
 use crate::writer::PacketWriter;
-use crate::{error::*, utils};
 
 use pkts_common::BufferMut;
-use pkts_macros::{Layer, LayerRef, StatelessLayer};
+#[cfg(feature = "alloc")]
+use pkts_macros::Layer;
+use pkts_macros::{LayerRef, StatelessLayer};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -55,6 +65,7 @@ use alloc::vec::Vec;
 /// .. .                              ...                              .
 ///    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// ```
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug, Layer, StatelessLayer)]
 #[metadata_type(UdpMetadata)]
 #[ref_type(UdpRef)]
@@ -65,6 +76,7 @@ pub struct Udp {
     payload: Option<Box<dyn LayerObject>>,
 }
 
+#[cfg(feature = "alloc")]
 impl Default for Udp {
     #[inline]
     fn default() -> Self {
@@ -72,6 +84,7 @@ impl Default for Udp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Udp {
     /// Construct a new UDP packet.
     ///
@@ -154,6 +167,7 @@ impl Udp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerLength for Udp {
     #[inline]
     fn len(&self) -> usize {
@@ -164,6 +178,7 @@ impl LayerLength for Udp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl LayerObject for Udp {
     #[inline]
     fn can_add_payload_default(&self, _payload: &dyn LayerObject) -> bool {
@@ -202,6 +217,7 @@ impl LayerObject for Udp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ToBytes for Udp {
     fn to_bytes_checksummed(
         &self,
@@ -267,6 +283,7 @@ impl ToBytes for Udp {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl FromBytesCurrent for Udp {
     #[inline]
     fn from_bytes_current_layer_unchecked(bytes: &[u8]) -> Self {
@@ -324,7 +341,7 @@ impl<'a> FromBytesRef<'a> for UdpRef<'a> {
 impl LayerOffset for UdpRef<'_> {
     #[inline]
     fn payload_byte_index_default(_bytes: &[u8], layer_type: LayerId) -> Option<usize> {
-        if layer_type == Raw::layer_id() {
+        if layer_type == RawRef::layer_id() {
             Some(8)
         } else {
             None
@@ -372,13 +389,13 @@ impl Validate for UdpRef<'_> {
                 let length = u16::from_be_bytes(len_bytes) as usize;
                 match length.cmp(&curr_layer.len()) {
                     cmp::Ordering::Greater => Err(ValidationError {
-                        layer: Udp::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::InsufficientBytes,
                         #[cfg(feature = "error_string")]
                         reason: "insufficient bytes for payload length advertised by UDP header",
                     }),
                     cmp::Ordering::Less => Err(ValidationError {
-                        layer: Udp::name(),
+                        layer: Self::name(),
                         class: ValidationErrorClass::ExcessBytes(curr_layer.len() - length),
                         #[cfg(feature = "error_string")]
                         reason:
@@ -388,7 +405,7 @@ impl Validate for UdpRef<'_> {
                 }
             }
             None => Err(ValidationError {
-                layer: Udp::name(),
+                layer: Self::name(),
                 class: ValidationErrorClass::InsufficientBytes,
                 #[cfg(feature = "error_string")]
                 reason: "insufficient bytes for UDP header",
@@ -400,7 +417,7 @@ impl Validate for UdpRef<'_> {
     #[inline]
     fn validate_payload_default(curr_layer: &[u8]) -> Result<(), ValidationError> {
         // We always consider the next layer after UDP to be `Raw`
-        Raw::validate(&curr_layer[8..])
+        Self::validate(&curr_layer[8..])
     }
 }
 
@@ -498,7 +515,7 @@ impl<'a> UdpBuilder<'a, UdpBuildSrcPort> {
             if self.data.remaining() >= 2 {
                 self.data.append(&sport.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Udp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(UdpRef::name()));
             }
         }
 
@@ -517,7 +534,7 @@ impl<'a> UdpBuilder<'a, UdpBuildDstPort> {
             if self.data.remaining() >= 2 {
                 self.data.append(&dport.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Udp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(UdpRef::name()));
             }
         }
 
@@ -538,7 +555,7 @@ impl<'a> UdpBuilder<'a, UdpBuildChksum> {
                 self.data.append(&[0u8; 2]);
                 self.data.append(&chksum.to_be_bytes());
             } else {
-                self.error = Some(SerializationError::insufficient_buffer(Udp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(UdpRef::name()));
             }
         }
 
@@ -560,12 +577,12 @@ impl<'a> UdpBuilder<'a, UdpBuildPayload> {
             }
 
             if self.data.remaining() < payload.len() {
-                self.error = Some(SerializationError::insufficient_buffer(Udp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(UdpRef::name()));
                 break 'insert_data;
             }
 
             let Ok(data_len) = u16::try_from(8 + payload.len()) else {
-                self.error = Some(SerializationError::insufficient_buffer(Udp::name()));
+                self.error = Some(SerializationError::insufficient_buffer(UdpRef::name()));
                 break 'insert_data;
             };
 
@@ -634,7 +651,7 @@ impl<'a> UdpBuilder<'a, UdpBuildPayload> {
                             [self.layer_start + 4..self.layer_start + 6]
                             .copy_from_slice(&data_len.to_be_bytes()),
                         Err(_) => {
-                            self.error = Some(SerializationError::length_encoding(Udp::name()))
+                            self.error = Some(SerializationError::length_encoding(UdpRef::name()))
                         }
                     }
                     data = new_data;

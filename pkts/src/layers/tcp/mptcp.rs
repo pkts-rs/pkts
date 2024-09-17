@@ -1,9 +1,8 @@
-use core::convert::{TryFrom, TryInto};
+use core::mem;
 #[cfg(all(not(feature = "std"), rustc_1_77))]
-use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use core::{array, mem};
+use core::net::IpAddr;
 #[cfg(feature = "std")]
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
 use bitflags::bitflags;
 
@@ -12,7 +11,7 @@ use pkts_common::Buffer;
 use crate::utils;
 use crate::writer::{PacketWritable, PacketWriter};
 
-use super::{SerializationError, Tcp, TCP_OPT_KIND_MPTCP};
+use super::{SerializationError, TcpRef, TCP_OPT_KIND_MPTCP};
 
 pub const MP_CAPABLE: u8 = 0x0;
 pub const MP_JOIN: u8 = 0x1;
@@ -106,7 +105,7 @@ impl GenericOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[(self.subtype << 4) | self.reserved])?;
         writer.write_slice(self.data.as_slice())
@@ -202,7 +201,7 @@ impl CapableOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[(self.subtype() << 4) | self.version(), self.flags().bits()])?;
 
@@ -375,7 +374,7 @@ impl JoinOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
         match &self.payload {
@@ -569,7 +568,7 @@ impl DssOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&((self.subtype() << 4) as u16 | self.flags().bits()).to_be_bytes())?;
 
@@ -781,7 +780,7 @@ bitflags! {
 pub struct AddAddrOpt {
     flags: AddAddrFlags,
     addr_id: u8,
-    addr: IpAddr,
+    addr: RawIpAddr,
     port: Option<u16>,
     hmac: Option<[u8; 8]>,
 }
@@ -795,16 +794,16 @@ impl AddAddrOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
 
         match &self.addr {
-            IpAddr::V4(v4) => {
-                writer.write_slice(&v4.octets())?;
+            RawIpAddr::V4(v4) => {
+                writer.write_slice(&v4.to_be_bytes())?;
             }
-            IpAddr::V6(v6) => {
-                writer.write_slice(&v6.octets())?;
+            RawIpAddr::V6(v6) => {
+                writer.write_slice(&v6.to_be_bytes())?;
             }
         }
 
@@ -831,27 +830,12 @@ impl AddAddrOpt {
         addrlen -= addrlen % 4; // Remove optional port
 
         let addr = match addrlen {
-            4 => IpAddr::V4(Ipv4Addr::new(
-                data[Self::FLAGS_OFFSET],
-                data[Self::FLAGS_OFFSET + 1],
-                data[Self::FLAGS_OFFSET + 2],
-                data[Self::FLAGS_OFFSET + 3],
+            4 => RawIpAddr::V4(u32::from_be_bytes(
+                utils::to_array(data, Self::ADDR_OFFSET).unwrap(),
             )),
-            16 => {
-                let segments: [u16; 8] = array::from_fn(|i| {
-                    u16::from_be_bytes(utils::to_array(data, Self::ADDR_OFFSET + 2 * i).unwrap())
-                });
-                IpAddr::V6(Ipv6Addr::new(
-                    segments[0],
-                    segments[1],
-                    segments[2],
-                    segments[3],
-                    segments[4],
-                    segments[5],
-                    segments[6],
-                    segments[7],
-                ))
-            }
+            16 => RawIpAddr::V6(u128::from_be_bytes(
+                utils::to_array(data, Self::ADDR_OFFSET).unwrap(),
+            )),
             _ => panic!(),
         };
 
@@ -882,8 +866,8 @@ impl AddAddrOpt {
     pub fn byte_len(&self) -> usize {
         let mut len = 4;
         len += match self.addr {
-            IpAddr::V4(_) => 4,
-            IpAddr::V6(_) => 16,
+            RawIpAddr::V4(_) => 4,
+            RawIpAddr::V6(_) => 16,
         };
 
         if self.port.is_some() {
@@ -921,6 +905,39 @@ impl AddAddrOpt {
     pub fn set_addr_id(&mut self, addr_id: u8) {
         self.addr_id = addr_id;
     }
+
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn addr(&self) -> IpAddr {
+        match self.addr {
+            RawIpAddr::V4(a) => IpAddr::V4(a.into()),
+            RawIpAddr::V6(a) => IpAddr::V6(a.into()),
+        }
+    }
+
+    pub fn addr_raw(&self) -> RawIpAddr {
+        self.addr
+    }
+
+    #[cfg(any(feature = "std", rustc_1_77))]
+    #[inline]
+    pub fn set_addr(&mut self, addr: IpAddr) {
+        self.addr = match addr {
+            IpAddr::V4(a) => RawIpAddr::V4(a.into()),
+            IpAddr::V6(a) => RawIpAddr::V6(a.into()),
+        };
+    }
+
+    #[inline]
+    pub fn set_addr_raw(&mut self, addr: RawIpAddr) {
+        self.addr = addr;
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RawIpAddr {
+    V4(u32),
+    V6(u128),
 }
 
 bitflags! {
@@ -947,7 +964,7 @@ impl RemoveAddrOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[(self.subtype() << 4) | self.flags().bits()])?;
         writer.write_slice(self.addr_ids.as_slice())
@@ -995,7 +1012,7 @@ impl FallbackOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
         writer.write_slice(&self.dsn.to_be_bytes())
@@ -1053,7 +1070,7 @@ impl FastCloseOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
         writer.write_slice(&self.receiver_key.to_be_bytes())
@@ -1111,7 +1128,7 @@ impl ResetOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[self.subtype() | self.flags.bits()])?;
         writer.write_slice(&[self.flags.bits()])
@@ -1173,7 +1190,7 @@ impl PrioOpt {
         &self,
         writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
-        let mut writer = PacketWriter::new::<Tcp>(writable);
+        let mut writer = PacketWriter::new::<TcpRef>(writable);
         writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
         writer.write_slice(&[self.subtype() | self.flags.bits()])
     }
