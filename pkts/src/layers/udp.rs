@@ -417,7 +417,7 @@ impl Validate for UdpRef<'_> {
     #[inline]
     fn validate_payload_default(curr_layer: &[u8]) -> Result<(), ValidationError> {
         // We always consider the next layer after UDP to be `Raw`
-        Self::validate(&curr_layer[8..])
+        RawRef::validate(&curr_layer[8..])
     }
 }
 
