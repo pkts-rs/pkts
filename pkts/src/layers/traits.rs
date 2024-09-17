@@ -12,10 +12,11 @@
 //!
 //!
 
-use core::fmt;
+use core::fmt::Debug;
 
 use super::dev_traits::*;
 use crate::error::*;
+use crate::writer::PacketWriter;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -26,7 +27,7 @@ use alloc::vec::Vec;
 //                       User-Facing Traits (for `Layer`)
 // =============================================================================
 
-/// A trait for retrieving the current length (in bytes) of a protocol layer and its payload.
+/// A trait for retrieving the byte length of a protocol layer and its payload.
 pub trait LayerLength {
     /// The length (in bytes) of the layer.
     ///
@@ -40,38 +41,31 @@ pub trait LayerLength {
 }
 
 /// A trait for serializing a [`Layer`] type into its binary representation.
-pub trait ToBytes {
+pub trait ToBytes: BaseLayer {
     /// Appends the layer's byte representation to the given byte vector and
     /// calculates the checksum of the given layer if needed.
     ///
     /// NOTE: this API is unstable, and should not be relied upon. It may be
     /// modified or removed at any point.
-    #[doc(hidden)]
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        bytes: &mut PacketWriter<'_, Vec<u8>>,
         prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError>;
-
-    /*
-    /// Appends the layer's byte representation to the given byte vector.
-    fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        self.to_bytes_chksummed(bytes, None);
-    }
-    */
 
     /// Serializes the given layer into bytes stored in a vector.
     #[inline]
     fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         let mut bytes = Vec::new();
-        self.to_bytes_checksummed(&mut bytes, None)?;
+        let mut writer = PacketWriter::new_with_layer(&mut bytes, self.layer_name());
+        self.to_bytes_checksummed(&mut writer, None)?;
         Ok(bytes)
     }
 }
 
 /// An object-safe subtrait of [`Layer`], suitable for internal operations involving
 /// generic layer payloads.
-pub trait LayerObject: AsAny + BaseLayer + fmt::Debug + ToBytes {
+pub trait LayerObject: AsAny + Debug + ToBytes {
     /// Determines whether `payload` can be used as a payload for the layer.
     #[inline]
     fn can_add_payload(&self, payload: &dyn LayerObject) -> bool {
@@ -90,9 +84,9 @@ pub trait LayerObject: AsAny + BaseLayer + fmt::Debug + ToBytes {
     /// Determines whether the given new payload can be used as a payload for the layer.
     ///
     /// This method is unaffected by custom layer selection (see [`CustomLayerSelection`]),
-    /// and should only be used in cases where custom layer validation is enabled but
-    /// the developer still wants to run the built-in default layer validation. If you're
-    /// uncertain what all this means, just use `can_add_payload()`.
+    /// and should only be used in cases where custom layer validation is enabled but the developer
+    /// still wants to run the built-in default layer validation. If you're uncertain what all this
+    /// means, just use [`can_add_payload()`](LayerObject::can_add_payload).
     #[doc(hidden)]
     fn can_add_payload_default(&self, payload: &dyn LayerObject) -> bool;
 
@@ -103,6 +97,12 @@ pub trait LayerObject: AsAny + BaseLayer + fmt::Debug + ToBytes {
     }
 
     /// Returns a slice over all of the layers payloads.
+    ///
+    /// Many protocol layers are guaranteed to only have at most one payload (e.g. TCP or IPv4).
+    /// However, this is not a universal property; as two examples, DNS responses can include
+    /// multiple resource records, and SCTP packets can have multiple DATA fields. `pkts` allows
+    /// for protocol layers to have this one-to-many relationship with payloads through this and
+    /// other methods.
     fn payloads(&self) -> &[Box<dyn LayerObject>];
 
     /// Returns a mutable reference to the current layer's payload, or `None` if the layer has no
@@ -113,6 +113,12 @@ pub trait LayerObject: AsAny + BaseLayer + fmt::Debug + ToBytes {
     }
 
     /// Returns a mutable slice over all of the layers payloads.
+    ///
+    /// Many protocol layers are guaranteed to only have at most one payload (e.g. TCP or IPv4).
+    /// However, this is not a universal property; as two examples, DNS responses can include
+    /// multiple resource records, and SCTP packets can have multiple DATA fields. `pkts` allows
+    /// for protocol layers to have this one-to-many relationship with payloads through this and
+    /// other methods.
     fn payloads_mut(&mut self) -> &mut [Box<dyn LayerObject>];
 
     /// Sets the payload of the current layer, returning an error if the payload type is

@@ -46,6 +46,7 @@ use core::fmt::Debug;
 use crate::error::*;
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+use crate::writer::PacketWriter;
 
 use pkts_macros::{Layer, LayerRef, StatelessLayer};
 
@@ -128,10 +129,11 @@ impl LayerObject for Raw {
 impl ToBytes for Raw {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        bytes.extend(&self.data);
+        writer.update_layer::<Raw>();
+        writer.write_slice(&self.data)?;
         Ok(())
     }
 }

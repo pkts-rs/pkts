@@ -24,6 +24,7 @@ use super::{Raw, RawRef};
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+use crate::writer::{PacketWritable, PacketWriter};
 use crate::{error::*, utils};
 
 use bitflags::bitflags;
@@ -797,39 +798,50 @@ impl LayerObject for Ipv4 {
 impl ToBytes for Ipv4 {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        let start = bytes.len();
-        bytes.push(0x40 | self.ihl());
-        bytes.push((self.dscp.dscp() << 2) | self.ecn as u8);
-        bytes.extend(u16::try_from(self.len()).unwrap_or(0xFFFF).to_be_bytes()); // WARNING: packets with contents greater than 65535 bytes will have their length field truncated
-        bytes.extend(self.id.to_be_bytes());
-        bytes.extend((((self.flags.bits() as u16) << 8) | self.frag_offset).to_be_bytes());
-        bytes.push(self.ttl);
-        bytes.push(
-            self.payload
-                .as_ref()
-                .map(|p| {
-                    p.layer_metadata()
-                        .as_any()
-                        .downcast_ref::<&dyn Ipv4PayloadMetadata>()
-                        .map(|m| m.ip_data_protocol())
-                        .expect("unknown payload protocol found in IPv4 packet")
-                })
-                .unwrap_or(DATA_PROTO_EXP1),
-        ); // 0xFD when no payload specified
-        bytes.extend(self.chksum.unwrap_or(0).to_be_bytes());
-        bytes.extend(self.src.octets());
-        bytes.extend(self.dst.octets());
-        self.options.to_bytes_extended(bytes);
+        let start = writer.len();
+
+        writer.update_layer::<Ipv4>();
+        writer.write_slice(&[0x40 | self.ihl()])?;
+        writer.write_slice(&[(self.dscp.dscp() << 2) | self.ecn as u8])?;
+        writer.write_slice(
+            &u16::try_from(self.len())
+                .map_err(|_| {
+                    SerializationError::length_encoding(
+                        "too many bytes to represent in IPv4 header",
+                    )
+                })?
+                .to_be_bytes(),
+        )?;
+        writer.write_slice(&self.id.to_be_bytes())?;
+        writer
+            .write_slice(&(((self.flags.bits() as u16) << 8) | self.frag_offset).to_be_bytes())?;
+        writer.write_slice(&[self.ttl])?;
+        writer.write_slice(&[self
+            .payload
+            .as_ref()
+            .map(|p| {
+                p.layer_metadata()
+                    .as_any()
+                    .downcast_ref::<&dyn Ipv4PayloadMetadata>()
+                    .map(|m| m.ip_data_protocol())
+                    .expect("unknown payload protocol found in IPv4 packet")
+            })
+            .unwrap_or(DATA_PROTO_EXP1)])?; // 0xFD when no payload specified
+        writer.write_slice(&self.chksum.unwrap_or(0).to_be_bytes())?;
+        writer.write_slice(&self.src.octets())?;
+        writer.write_slice(&self.dst.octets())?;
+        self.options.to_bytes_extended(writer)?;
         if let Some(payload) = self.payload.as_ref() {
-            payload.to_bytes_checksummed(bytes, Some((Self::layer_id(), start)))?;
+            payload.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))?;
         }
 
         if self.chksum.is_none() {
-            let chksum_field: &mut [u8; 2] = &mut bytes[start + 10..start + 12].try_into().unwrap();
-            *chksum_field = utils::ones_complement_16bit(&bytes[start..]).to_be_bytes();
+            let chksum_field: &mut [u8; 2] =
+                &mut writer[start + 10..start + 12].try_into().unwrap();
+            *chksum_field = utils::ones_complement_16bit(&writer[start..]).to_be_bytes();
         }
 
         Ok(())
@@ -1320,24 +1332,28 @@ impl Ipv4Options {
     }
 
     #[inline]
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         let mut v = Vec::new();
-        self.to_bytes_extended(&mut v);
-        v
+        let mut writer = PacketWriter::new::<Ipv4>(&mut v);
+        self.to_bytes_extended(&mut writer)?;
+        Ok(v)
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         match self.options.as_ref() {
-            None => (),
+            None => Ok(()),
             Some(options) => {
                 for option in options.iter() {
-                    option.to_bytes_extended(bytes);
+                    option.to_bytes_extended(writer)?;
                 }
 
                 match self.padding.as_ref() {
-                    None => (),
-                    Some(p) => bytes.extend(p),
+                    None => Ok(()),
+                    Some(p) => writer.write_slice(p),
                 }
             }
         }
@@ -1611,25 +1627,29 @@ pub struct Ipv4Option {
 }
 
 impl Ipv4Option {
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.option_type);
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.option_type])?;
         match self.option_type {
-            0 | 1 => (),
+            0 | 1 => Ok(()),
             _ => match self.value.as_ref() {
-                None => bytes.push(2),
+                None => writer.write_slice(&[2]),
                 Some(val) => {
-                    bytes.push((2 + val.len()) as u8);
-                    bytes.extend(val);
+                    writer.write_slice(&[(2 + val.len()) as u8])?;
+                    writer.write_slice(val)
                 }
             },
         }
     }
 
     #[inline]
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         let mut v = Vec::new();
-        self.to_bytes_extended(&mut v);
-        v
+        let mut writer = PacketWriter::new::<Ipv4>(&mut v);
+        self.to_bytes_extended(&mut writer)?;
+        Ok(v)
     }
 }
 
@@ -2068,23 +2088,23 @@ impl LayerObject for Ipv6 {
 impl ToBytes for Ipv6 {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        let start = bytes.len();
-        bytes.push(0b_0110_0000 | ((self.traffic_class.value & 0xF0) >> 4));
-        bytes.push(
-            ((self.traffic_class.value & 0x0F) << 4)
-                | ((self.flow_label.value & 0x_00_0F_00_00) >> 16) as u8,
-        );
-        bytes.push(((self.flow_label.value & 0x_00_00_FF_00) >> 8) as u8);
-        bytes.push((self.flow_label.value & 0x_00_00_00_FF) as u8);
-        bytes.extend(
-            u16::try_from(self.payload.as_ref().map_or(0, |p| p.len()))
+        let start = writer.len();
+
+        writer.update_layer::<Ipv4>();
+        writer.write_slice(&[0b_0110_0000 | ((self.traffic_class.value & 0xF0) >> 4)])?;
+        writer.write_slice(&[((self.traffic_class.value & 0x0F) << 4)
+            | ((self.flow_label.value & 0x_00_0F_00_00) >> 16) as u8])?;
+        writer.write_slice(&[((self.flow_label.value & 0x_00_00_FF_00) >> 8) as u8])?;
+        writer.write_slice(&[(self.flow_label.value & 0x_00_00_00_FF) as u8])?;
+        writer.write_slice(
+            &u16::try_from(self.payload.as_ref().map_or(0, |p| p.len()))
                 .map_err(|_| SerializationError::length_encoding(Ipv6::name()))?
                 .to_be_bytes(),
-        );
-        bytes.push(match self.payload.as_ref() {
+        )?;
+        writer.write_slice(&[match self.payload.as_ref() {
             None => DATA_PROTO_IPV6_NO_NXT,
             Some(p) => p
                 .layer_metadata()
@@ -2092,12 +2112,12 @@ impl ToBytes for Ipv6 {
                 .downcast_ref::<&dyn Ipv6PayloadMetadata>()
                 .map(|m| m.ip_data_protocol())
                 .ok_or(SerializationError::bad_upper_layer(Ipv6::name()))?,
-        });
-        bytes.push(self.hop_limit);
-        bytes.extend(self.src.octets());
-        bytes.extend(self.dst.octets());
+        }])?;
+        writer.write_slice(&[self.hop_limit])?;
+        writer.write_slice(&self.src.octets())?;
+        writer.write_slice(&self.dst.octets())?;
         if let Some(p) = self.payload.as_ref() {
-            p.to_bytes_checksummed(bytes, Some((Self::layer_id(), start)))?;
+            p.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))?;
         }
 
         Ok(())

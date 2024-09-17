@@ -27,6 +27,7 @@ use super::ip::{Ipv4, Ipv6, DATA_PROTO_UDP};
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 use crate::layers::Raw;
+use crate::writer::PacketWriter;
 use crate::{error::*, utils};
 
 use pkts_common::BufferMut;
@@ -203,21 +204,22 @@ impl LayerObject for Udp {
 impl ToBytes for Udp {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        let start = bytes.len();
+        let start = writer.len();
         let len: u16 = self
             .len()
             .try_into()
             .map_err(|_| SerializationError::length_encoding(Udp::name()))?;
-        bytes.extend(self.sport.to_be_bytes());
-        bytes.extend(self.dport.to_be_bytes());
-        bytes.extend(len.to_be_bytes());
-        bytes.extend(self.chksum.unwrap_or(0).to_be_bytes());
+        writer.update_layer::<Udp>();
+        writer.write_slice(&self.sport.to_be_bytes())?;
+        writer.write_slice(&self.dport.to_be_bytes())?;
+        writer.write_slice(&len.to_be_bytes())?;
+        writer.write_slice(&self.chksum.unwrap_or(0).to_be_bytes())?;
         match &self.payload {
             None => (),
-            Some(p) => p.to_bytes_checksummed(bytes, Some((Self::layer_id(), start)))?,
+            Some(p) => p.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))?,
         }
 
         if self.chksum.is_none() {
@@ -225,22 +227,25 @@ impl ToBytes for Udp {
                 return Err(SerializationError::bad_upper_layer(Udp::name()));
             };
 
+            let end = writer.len();
+            let ul_len = end - start;
+
             let new_chksum = if id == Ipv4::layer_id() {
-                let mut data_chksum: u16 = utils::ones_complement_16bit(&bytes[start..]);
+                let mut data_chksum: u16 = utils::ones_complement_16bit(&writer[start..]);
                 let addr_chksum =
-                    utils::ones_complement_16bit(&bytes[prev_idx + 12..prev_idx + 20]);
+                    utils::ones_complement_16bit(&writer[prev_idx + 12..prev_idx + 20]);
                 data_chksum = utils::ones_complement_add(data_chksum, addr_chksum);
                 data_chksum = utils::ones_complement_add(data_chksum, DATA_PROTO_UDP as u16);
-                let upper_layer_len = (bytes.len() - start) as u16;
+                let upper_layer_len = ul_len as u16;
                 data_chksum = utils::ones_complement_add(data_chksum, upper_layer_len);
 
                 data_chksum
             } else if id == Ipv6::layer_id() {
-                let mut data_chksum: u16 = utils::ones_complement_16bit(&bytes[start..]);
+                let mut data_chksum: u16 = utils::ones_complement_16bit(&writer[start..]);
                 let addr_chksum =
-                    utils::ones_complement_16bit(&bytes[prev_idx + 16..prev_idx + 40]);
+                    utils::ones_complement_16bit(&writer[prev_idx + 16..prev_idx + 40]);
                 data_chksum = utils::ones_complement_add(data_chksum, addr_chksum);
-                let upper_layer_len = (bytes.len() - start) as u32;
+                let upper_layer_len = ul_len as u32;
                 data_chksum =
                     utils::ones_complement_add(data_chksum, (upper_layer_len >> 16) as u16);
                 data_chksum =
@@ -253,7 +258,7 @@ impl ToBytes for Udp {
                 return Ok(()); // Leave the checksum as 0--we don't have an IPv4/IPv6 pseudo-header, so we can't calculate it
             };
 
-            let chksum_field: &mut [u8; 2] = &mut bytes[start + 6..start + 8].try_into().unwrap();
+            let chksum_field: &mut [u8; 2] = &mut writer[start + 6..start + 8].try_into().unwrap();
             *chksum_field = new_chksum.to_be_bytes();
         }
 

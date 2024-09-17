@@ -20,6 +20,7 @@ use crate::layers::dev_traits::*;
 use crate::layers::ip::{Ipv4, Ipv4Ref, Ipv6, Ipv6Ref};
 use crate::layers::traits::*;
 use crate::layers::{Raw, RawRef};
+use crate::writer::PacketWriter;
 use crate::{error::*, utils};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -156,20 +157,19 @@ impl LayerObject for Ether {
 impl ToBytes for Ether {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        let start = bytes.len();
-        bytes.extend(self.src);
-        bytes.extend(self.dst);
+        let start = writer.len();
+
+        writer.update_layer::<Ether>();
+        writer.write_slice(&self.src)?;
+        writer.write_slice(&self.dst)?;
         match self.payload.as_ref() {
-            None => {
-                bytes.extend(ETH_PROTOCOL_EXPERIMENTAL.to_be_bytes());
-                Ok(())
-            }
+            None => writer.write_slice(&ETH_PROTOCOL_EXPERIMENTAL.to_be_bytes()),
             Some(p) => {
-                bytes.extend(
-                    match p
+                writer.write_slice(
+                    &match p
                         .layer_metadata()
                         .as_any()
                         .downcast_ref::<&dyn EtherPayloadMetadata>()
@@ -178,8 +178,8 @@ impl ToBytes for Ether {
                         None => ETH_PROTOCOL_EXPERIMENTAL,
                     }
                     .to_be_bytes(),
-                );
-                p.to_bytes_checksummed(bytes, Some((Self::layer_id(), start)))
+                )?;
+                p.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))
             }
         }
     }
