@@ -9,6 +9,7 @@ edition = "2021"
 repository = "https://github.com/pkts-rs/pkts"
 keywords = ["packets", "network", "scapy", "parsing"]
 categories = ["network-programming", "encoding", "parsing"]
+readme = "../README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

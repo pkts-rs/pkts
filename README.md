@@ -1,11 +1,13 @@
 # pkts
 
-[![Latest Version]][crates.io] [![Documentation]][docs.rs] [![rscap: rustc 1.66+]][Rust 1.66]
+[![CI Badge]][CI Status] [![Latest Version]][crates.io] [![Documentation]][docs.rs] [![rscap: rustc 1.65+]][Rust 1.65]
 
 [Latest Version]: https://img.shields.io/crates/v/pkts.svg
+[CI Badge]: https://github.com/pkts-rs/pkts/actions/workflows/full_ci.yml/badge.svg
+[CI Status]: https://github.com/pkts-rs/pkts/actions/workflows/full_ci.yml
 [crates.io]: https://crates.io/crates/pkts
-[rscap: rustc 1.66+]: https://img.shields.io/badge/MSRV-rustc_1.66+-blue.svg
-[Rust 1.66]: https://blog.rust-lang.org/2022/11/03/Rust-1.66.0.html
+[rscap: rustc 1.66+]: https://img.shields.io/badge/MSRV-rustc_1.65+-blue.svg
+[Rust 1.66]: https://blog.rust-lang.org/2022/11/03/Rust-1.65.0.html
 [Documentation]: https://docs.rs/pkts/badge.svg
 [docs.rs]: https://docs.rs/pkts/
 
@@ -24,7 +26,7 @@
 
 - **Platform-independent interface for packet capture/transmission:** `rscap` provides a single unified interface for capturing and transmitting packets across any supported platform. Additionally, the library exposes safe abstractions of platform-specific packet capture tools (such as `AF_PACKET`/`PACKET_MMAP` sockets in Linux) to support cases where fine-grained control or platform-specific features are desired.
 - **`no-std` Compatible:** every packet type in the `pkts` crate can be used without the standard library, and a special `LayerRef` type can be used to access raw packet bytes without requiring `alloc`.
-- **Robust APIs for building/modifying packets:** `pkts` provides simple operations to combine various layers into a single packet, and to index into a different layers of a packet to retrieve or modify fields. Users of [`scapy`](https://github.com/ecdev/scapy) may find the API surprisingly familiar, especially for layer composition and indexing operations:
+- **Robust APIs for building/modifying packets:** `pkts` provides simple operations to combine various layers into a single packet, and to index into a different layers of a packet to retrieve or modify fields. Users of [`scapy`](https://github.com/secdev/scapy) may find the API surprisingly familiar, especially for layer composition and indexing operations:
 
 ```rust
 use layers::{ip::Ipv4, tcp::Tcp};
