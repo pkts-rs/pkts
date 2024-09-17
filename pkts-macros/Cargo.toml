@@ -3,6 +3,7 @@ name = "pkts-macros"
 description = "procedural macros for deriving `pkts` library traits"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
 license = "MIT OR Apache-2.0"
+rust-version = "1.65"
 version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/pkts-rs/pkts"

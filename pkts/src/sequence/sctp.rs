@@ -1,7 +1,11 @@
-use core::{cmp::Ordering, mem};
+use core::cmp::Ordering;
+use core::convert::TryInto;
+use core::mem;
 
 #[cfg(feature = "std")]
 use std::collections::{BTreeMap, VecDeque};
+#[cfg(feature = "std")]
+use std::iter::FromIterator;
 
 use super::{PktFilterDynFn, Sequence, SequenceObject, UnboundedSequence};
 use crate::layers::sctp::{DataChunkFlags, SctpRef};

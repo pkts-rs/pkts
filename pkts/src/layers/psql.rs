@@ -11,12 +11,12 @@
 //! Protocol layers used for communication between PostgreSQL clients and databases.
 //!
 
+use core::convert::{TryFrom, TryInto};
 use core::ffi::CStr;
-#[cfg(feature = "std")]
-use std::collections::BTreeMap;
-
 use core::iter::Iterator;
 use core::{cmp, str};
+#[cfg(feature = "std")]
+use std::collections::BTreeMap;
 #[cfg(feature = "std")]
 use std::ffi::CString;
 

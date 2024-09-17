@@ -1,6 +1,7 @@
 [package]
 name = "pktspec"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
+rust-version = "1.65"
 version = "0.1.0"
 edition = "2021"
 

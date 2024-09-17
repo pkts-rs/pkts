@@ -12,6 +12,7 @@
 //!
 
 use core::cmp::Ordering;
+use core::convert::{TryFrom, TryInto};
 use core::slice;
 
 use super::Raw;

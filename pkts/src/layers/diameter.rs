@@ -12,14 +12,15 @@
 //!
 //!
 
+use core::convert::{TryFrom, TryInto};
+use core::iter::Iterator;
+use core::{cmp, slice};
+
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 use crate::layers::*;
 use crate::utils;
 use crate::writer::PacketWritable;
-
-use core::iter::Iterator;
-use core::{cmp, slice};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;

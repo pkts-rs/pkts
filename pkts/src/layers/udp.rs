@@ -20,6 +20,7 @@
 //! may use heap allocations) or [`UdpBuilder`], which constructs a UDP packet entirely within
 //! a stack-allocated byte array.
 
+use core::convert::{TryFrom, TryInto};
 use core::fmt::Debug;
 use core::{cmp, slice};
 

@@ -12,8 +12,12 @@
 //!
 //!
 
+use core::convert::{TryFrom, TryInto};
 use core::iter::Iterator;
 use core::{cmp, mem, slice};
+
+#[cfg(feature = "std")]
+use std::iter::FromIterator;
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
