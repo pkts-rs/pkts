@@ -13,6 +13,7 @@ use pkts_macros::{Layer, LayerRef, StatelessLayer};
 use crate::error::*;
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+use crate::writer::PacketWriter;
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -73,9 +74,10 @@ impl LayerObject for Example {
 impl ToBytes for Example {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
+        writer.update_layer::<Example>();
         todo!()
     }
 }

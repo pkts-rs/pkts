@@ -24,6 +24,7 @@ use pkts_macros::{Layer, LayerRef, StatelessLayer};
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
+use crate::writer::{PacketWritable, PacketWriter};
 use crate::{error::*, utils};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
@@ -195,9 +196,10 @@ impl LayerObject for PsqlClient {
 impl ToBytes for PsqlClient {
     fn to_bytes_checksummed(
         &self,
-        _bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
+        writer.update_layer::<PsqlClient>();
         todo!()
     }
 }
@@ -319,45 +321,48 @@ impl ClientMessage {
         }
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         match self {
-            ClientMessage::AuthDataResponse(m) => m.to_bytes_extended(bytes),
+            ClientMessage::AuthDataResponse(m) => m.to_bytes_extended(writer),
             ClientMessage::Bind(_) => todo!(),
             ClientMessage::CancelRequest(_) => todo!(),
             ClientMessage::ClosePortal(_) => todo!(),
             ClientMessage::ClosePrepared(_) => todo!(),
             ClientMessage::CopyData(_) => todo!(),
             ClientMessage::CopyDone => {
-                bytes.push(CLIENT_MSG_COPY_DONE);
-                bytes.extend(5i32.to_be_bytes());
+                writer.write_slice(&[CLIENT_MSG_COPY_DONE])?;
+                writer.write_slice(&5i32.to_be_bytes())
             }
             ClientMessage::CopyFail(_) => todo!(),
             ClientMessage::DescribePortal(_) => todo!(),
             ClientMessage::DescribePrepared(_) => todo!(),
             ClientMessage::Execute(_) => todo!(),
             ClientMessage::Flush => {
-                bytes.push(CLIENT_MSG_FLUSH);
-                bytes.extend(5i32.to_be_bytes());
+                writer.write_slice(&[CLIENT_MSG_FLUSH])?;
+                writer.write_slice(&5i32.to_be_bytes())
             }
             ClientMessage::FunctionCall(_) => todo!(),
             ClientMessage::GssEncRequest => {
-                bytes.extend(8i32.to_be_bytes());
-                bytes.extend(CLIENT_STARTUP_GSS_ENC_REQ.to_be_bytes());
+                writer.write_slice(&8i32.to_be_bytes())?;
+                writer.write_slice(&CLIENT_STARTUP_GSS_ENC_REQ.to_be_bytes())
             }
             ClientMessage::Parse(_) => todo!(),
             ClientMessage::Query(_) => todo!(),
             ClientMessage::SslRequest => {
-                bytes.extend(8i32.to_be_bytes());
-                bytes.extend(CLIENT_STARTUP_SSL_REQ.to_be_bytes());
+                writer.write_slice(&8i32.to_be_bytes())?;
+                writer.write_slice(&CLIENT_STARTUP_SSL_REQ.to_be_bytes())
             }
             ClientMessage::StartupMessage(_) => todo!(),
             ClientMessage::Sync => {
-                bytes.push(CLIENT_MSG_SYNC);
-                bytes.extend(5i32.to_be_bytes());
+                writer.write_slice(&[CLIENT_MSG_SYNC])?;
+                writer.write_slice(&5i32.to_be_bytes())
             }
             ClientMessage::Terminate => {
-                bytes.push(CLIENT_MSG_TERMINATE);
-                bytes.extend(5i32.to_be_bytes());
+                writer.write_slice(&[CLIENT_MSG_TERMINATE])?;
+                writer.write_slice(&5i32.to_be_bytes())
             }
         }
     }
@@ -390,10 +395,13 @@ impl AuthDataResponse {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((4 + self.data.len() as i32).to_be_bytes());
-        bytes.extend(&self.data);
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(4 + self.data.len() as i32).to_be_bytes())?;
+        writer.write_slice(&self.data)
     }
 }
 
@@ -440,11 +448,14 @@ impl CancelRequest {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend(16i32.to_be_bytes());
-        bytes.extend(self.proc_id.to_be_bytes());
-        bytes.extend(self.key.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&16i32.to_be_bytes())?;
+        writer.write_slice(&self.proc_id.to_be_bytes())?;
+        writer.write_slice(&self.key.to_be_bytes())
     }
 }
 
@@ -480,11 +491,14 @@ impl ClosePortal {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.push(self.close_type());
-        bytes.extend(self.portal_name.as_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&[self.close_type()])?;
+        writer.write_slice(self.portal_name.as_bytes())
     }
 }
 
@@ -520,11 +534,14 @@ impl ClosePrepared {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.push(self.close_type());
-        bytes.extend(self.stmt_name.as_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&[self.close_type()])?;
+        writer.write_slice(self.stmt_name.as_bytes())
     }
 }
 
@@ -555,10 +572,13 @@ impl CopyData {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(&self.data_stream);
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&self.data_stream)
     }
 }
 
@@ -589,10 +609,13 @@ impl CopyFail {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(self.err_msg.as_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(self.err_msg.as_bytes())
     }
 }
 
@@ -628,11 +651,14 @@ impl DescribePortal {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.push(self.describe_type());
-        bytes.extend(self.portal_name.as_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&[self.describe_type()])?;
+        writer.write_slice(self.portal_name.as_bytes())
     }
 }
 
@@ -668,11 +694,14 @@ impl DescribePrepared {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.push(self.describe_type());
-        bytes.extend(self.stmt_name.as_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&[self.describe_type()])?;
+        writer.write_slice(self.stmt_name.as_bytes())
     }
 }
 
@@ -714,11 +743,14 @@ impl Execute {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(self.portal_name.as_bytes());
-        bytes.extend(self.max_rows.unwrap_or(0).to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(self.portal_name.as_bytes())?;
+        writer.write_slice(&self.max_rows.unwrap_or(0).to_be_bytes())
     }
 }
 
@@ -774,15 +806,19 @@ impl Parse {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(self.dst_stmt.as_bytes());
-        bytes.extend(self.query.as_bytes());
-        bytes.extend((self.type_ids.len() as u16).to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(self.dst_stmt.as_bytes())?;
+        writer.write_slice(self.query.as_bytes())?;
+        writer.write_slice(&(self.type_ids.len() as u16).to_be_bytes())?;
         for id in &self.type_ids {
-            bytes.extend(id.unwrap_or(0).to_be_bytes());
+            writer.write_slice(&id.unwrap_or(0).to_be_bytes())?;
         }
+        Ok(())
     }
 }
 
@@ -813,10 +849,13 @@ impl Query {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(self.query.as_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(self.query.as_bytes())
     }
 }
 
@@ -868,14 +907,17 @@ impl StartupMessage {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.extend((self.len() as i32).to_be_bytes());
-        bytes.extend(CLIENT_STARTUP_V3_0.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&(self.len() as i32).to_be_bytes())?;
+        writer.write_slice(&CLIENT_STARTUP_V3_0.to_be_bytes())?;
         for (k, v) in &self.params {
-            bytes.extend(k.as_bytes());
-            bytes.extend(v.as_bytes());
+            writer.write_slice(k.as_bytes())?;
+            writer.write_slice(v.as_bytes())?;
         }
-        bytes.push(0x00); // null-terminating byte
+        writer.write_slice(&[0x00]) // null-terminating byte
     }
 }
 
@@ -960,23 +1002,28 @@ impl Bind {
         &mut self.results_fmt
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(self.dst_portal.as_bytes());
-        bytes.extend(self.src_prepared.as_bytes());
-        bytes.extend((self.params_fmt.len() as i16).to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&self.dst_portal.as_bytes())?;
+        writer.write_slice(&self.src_prepared.as_bytes())?;
+        writer.write_slice(&(self.params_fmt.len() as i16).to_be_bytes())?;
         for f in &self.params_fmt {
-            f.to_bytes_extended(bytes);
+            f.to_bytes_extended(writer)?;
         }
-        bytes.extend((self.params.len() as i16).to_be_bytes());
+        writer.write_slice(&(self.params.len() as i16).to_be_bytes())?;
         for p in &self.params {
-            bytes.extend(p.as_ref().map_or(-1, |v| v.len() as i32).to_be_bytes());
+            writer.write_slice(&p.as_ref().map_or(-1, |v| v.len() as i32).to_be_bytes())?;
         }
-        bytes.extend((self.results_fmt.len() as i16).to_be_bytes());
+        writer.write_slice(&(self.results_fmt.len() as i16).to_be_bytes())?;
         for f in &self.results_fmt {
-            f.to_bytes_extended(bytes);
+            f.to_bytes_extended(writer)?;
         }
+
+        Ok(())
     }
 }
 
@@ -1048,19 +1095,22 @@ impl FunctionCall {
         self.result_fmt = result_fmt;
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(self.msg_id());
-        bytes.extend((self.len() as i32 - 1).to_be_bytes());
-        bytes.extend(self.function_id.to_be_bytes());
-        bytes.extend((self.args_fmt.len() as i16).to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.msg_id()])?;
+        writer.write_slice(&(self.len() as i32 - 1).to_be_bytes())?;
+        writer.write_slice(&self.function_id.to_be_bytes())?;
+        writer.write_slice(&(self.args_fmt.len() as i16).to_be_bytes())?;
         for f in &self.args_fmt {
-            f.to_bytes_extended(bytes);
+            f.to_bytes_extended(writer)?;
         }
-        bytes.extend((self.args.len() as i16).to_be_bytes());
+        writer.write_slice(&(self.args.len() as i16).to_be_bytes())?;
         for p in &self.args {
-            bytes.extend(p.as_ref().map_or(-1, |v| v.len() as i32).to_be_bytes());
+            writer.write_slice(&p.as_ref().map_or(-1, |v| v.len() as i32).to_be_bytes())?;
         }
-        self.result_fmt.to_bytes_extended(bytes);
+        self.result_fmt.to_bytes_extended(writer)
     }
 }
 
@@ -1073,15 +1123,18 @@ pub enum FormatCode {
 
 impl FormatCode {
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(
-            match self {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(
+            &match self {
                 FormatCode::Text => 0,
                 FormatCode::Binary => 1,
                 FormatCode::Unknown(b) => *b,
             }
             .to_be_bytes(),
-        );
+        )
     }
 }
 
@@ -2615,9 +2668,10 @@ impl LayerObject for PsqlServer {
 impl ToBytes for PsqlServer {
     fn to_bytes_checksummed(
         &self,
-        _bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
+        writer.update_layer::<PsqlServer>();
         todo!()
     }
 }

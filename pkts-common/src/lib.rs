@@ -10,7 +10,8 @@
 
 #![forbid(unsafe_code)]
 
-use core::array;
+use std::array;
+use std::ops::{Index, Range, RangeFrom, RangeInclusive, RangeTo, RangeToInclusive};
 
 #[derive(Clone, Debug)]
 pub struct Buffer<T: Copy, const N: usize> {
@@ -23,7 +24,9 @@ impl<T: Copy + Default, const N: usize> Buffer<T, N> {
     pub fn new() -> Self {
         Self::default()
     }
+}
 
+impl<T: Copy, const N: usize> Buffer<T, N> {
     #[inline]
     pub fn as_slice(&self) -> &[T] {
         &self.buf[..self.buf_len]
@@ -78,6 +81,60 @@ impl<T: Copy + Default, const N: usize> Default for Buffer<T, N> {
             buf: array::from_fn(|_| T::default()),
             buf_len: 0,
         }
+    }
+}
+
+impl<T: Copy, const N: usize> Index<usize> for Buffer<T, N> {
+    type Output = T;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl<T: Copy, const N: usize> Index<Range<usize>> for Buffer<T, N> {
+    type Output = [T];
+
+    #[inline]
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl<T: Copy, const N: usize> Index<RangeFrom<usize>> for Buffer<T, N> {
+    type Output = [T];
+
+    #[inline]
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl<T: Copy, const N: usize> Index<RangeInclusive<usize>> for Buffer<T, N> {
+    type Output = [T];
+
+    #[inline]
+    fn index(&self, index: RangeInclusive<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl<T: Copy, const N: usize> Index<RangeTo<usize>> for Buffer<T, N> {
+    type Output = [T];
+
+    #[inline]
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl<T: Copy, const N: usize> Index<RangeToInclusive<usize>> for Buffer<T, N> {
+    type Output = [T];
+
+    #[inline]
+    fn index(&self, index: RangeToInclusive<usize>) -> &Self::Output {
+        self.as_slice().index(index)
     }
 }
 
@@ -165,5 +222,59 @@ impl<'a> BufferMut<'a> {
     #[inline]
     pub fn remaining(&self) -> usize {
         self.buf.len() - self.buf_len
+    }
+}
+
+impl Index<usize> for BufferMut<'_> {
+    type Output = u8;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl Index<Range<usize>> for BufferMut<'_> {
+    type Output = [u8];
+
+    #[inline]
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl Index<RangeFrom<usize>> for BufferMut<'_> {
+    type Output = [u8];
+
+    #[inline]
+    fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl Index<RangeInclusive<usize>> for BufferMut<'_> {
+    type Output = [u8];
+
+    #[inline]
+    fn index(&self, index: RangeInclusive<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl Index<RangeTo<usize>> for BufferMut<'_> {
+    type Output = [u8];
+
+    #[inline]
+    fn index(&self, index: RangeTo<usize>) -> &Self::Output {
+        self.as_slice().index(index)
+    }
+}
+
+impl Index<RangeToInclusive<usize>> for BufferMut<'_> {
+    type Output = [u8];
+
+    #[inline]
+    fn index(&self, index: RangeToInclusive<usize>) -> &Self::Output {
+        self.as_slice().index(index)
     }
 }

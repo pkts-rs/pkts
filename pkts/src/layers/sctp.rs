@@ -13,12 +13,13 @@
 //!
 
 use core::iter::Iterator;
-use core::{cmp, iter, mem, slice};
+use core::{cmp, mem, slice};
 
 use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 use crate::layers::*;
 use crate::utils;
+use crate::writer::PacketWritable;
 
 use bitflags::bitflags;
 
@@ -335,20 +336,21 @@ impl LayerObject for Sctp {
 impl ToBytes for Sctp {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        let start = bytes.len();
-        bytes.extend(self.sport.to_be_bytes());
-        bytes.extend(self.dport.to_be_bytes());
-        bytes.extend(self.verify_tag.to_be_bytes());
-        bytes.extend(self.chksum.unwrap_or(0).to_be_bytes());
+        let start = writer.len();
+        writer.update_layer::<Sctp>();
+        writer.write_slice(&self.sport.to_be_bytes())?;
+        writer.write_slice(&self.dport.to_be_bytes())?;
+        writer.write_slice(&self.verify_tag.to_be_bytes())?;
+        writer.write_slice(&self.chksum.unwrap_or(0).to_be_bytes())?;
         for chunk in &self.control_chunks {
-            chunk.to_bytes_extended(bytes)?;
+            chunk.to_bytes_extended(writer)?;
         }
 
         for chunk in &self.payload_chunks {
-            chunk.to_bytes_checksummed(bytes, Some((Self::layer_id(), start)))?;
+            chunk.to_bytes_checksummed(writer, Some((Self::layer_id(), start)))?;
         }
 
         // TODO: set checksum here
@@ -741,24 +743,25 @@ impl SctpControlChunk {
         }
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         match self {
-            SctpControlChunk::Init(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::InitAck(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::Sack(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::Heartbeat(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::HeartbeatAck(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::Abort(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::Shutdown(c) => c.to_bytes_extended(bytes),
-            SctpControlChunk::ShutdownAck(c) => c.to_bytes_extended(bytes),
-            SctpControlChunk::Error(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::CookieEcho(c) => c.to_bytes_extended(bytes)?,
-            SctpControlChunk::CookieAck(c) => c.to_bytes_extended(bytes),
-            SctpControlChunk::ShutdownComplete(c) => c.to_bytes_extended(bytes),
-            SctpControlChunk::Unknown(c) => c.to_bytes_extended(bytes)?,
+            SctpControlChunk::Init(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::InitAck(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::Sack(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::Heartbeat(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::HeartbeatAck(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::Abort(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::Shutdown(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::ShutdownAck(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::Error(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::CookieEcho(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::CookieAck(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::ShutdownComplete(c) => c.to_bytes_extended(writer),
+            SctpControlChunk::Unknown(c) => c.to_bytes_extended(writer),
         }
-
-        Ok(())
     }
 }
 
@@ -1031,17 +1034,20 @@ impl InitChunk {
         &mut self.options
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_INIT);
-        bytes.push(self.flags);
-        bytes.extend(self.unpadded_len().to_be_bytes());
-        bytes.extend(self.init_tag.to_be_bytes());
-        bytes.extend(self.a_rwnd.to_be_bytes());
-        bytes.extend(self.ostreams.to_be_bytes());
-        bytes.extend(self.istreams.to_be_bytes());
-        bytes.extend(self.init_tsn.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_INIT])?;
+        writer.write_slice(&[self.flags])?;
+        writer.write_slice(&self.unpadded_len().to_be_bytes())?;
+        writer.write_slice(&self.init_tag.to_be_bytes())?;
+        writer.write_slice(&self.a_rwnd.to_be_bytes())?;
+        writer.write_slice(&self.ostreams.to_be_bytes())?;
+        writer.write_slice(&self.istreams.to_be_bytes())?;
+        writer.write_slice(&self.init_tsn.to_be_bytes())?;
         for option in &self.options {
-            option.to_bytes_extended(bytes)?;
+            option.to_bytes_extended(writer)?;
         }
         // No padding needed--options are guaranteed to be padded to 4 bytes.
 
@@ -1352,54 +1358,58 @@ impl InitOption {
         utils::padded_length::<4>(self.unpadded_len())
     }
 
-    fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         match self {
             Self::Ipv4Address(ipv4) => {
-                bytes.extend(INIT_OPT_IPV4_ADDRESS.to_be_bytes());
-                bytes.extend(8u16.to_be_bytes());
-                bytes.extend(ipv4.to_be_bytes());
+                writer.write_slice(&INIT_OPT_IPV4_ADDRESS.to_be_bytes())?;
+                writer.write_slice(&8u16.to_be_bytes())?;
+                writer.write_slice(&ipv4.to_be_bytes())?;
             }
             Self::Ipv6Address(ipv6) => {
-                bytes.extend(INIT_OPT_IPV6_ADDRESS.to_be_bytes());
-                bytes.extend(20u16.to_be_bytes());
-                bytes.extend(ipv6.to_be_bytes());
+                writer.write_slice(&INIT_OPT_IPV6_ADDRESS.to_be_bytes())?;
+                writer.write_slice(&20u16.to_be_bytes())?;
+                writer.write_slice(&ipv6.to_be_bytes())?;
             }
             Self::CookiePreservative(cookie_lifespan) => {
-                bytes.extend(INIT_OPT_COOKIE_PRESERVATIVE.to_be_bytes());
-                bytes.extend(8u16.to_be_bytes());
-                bytes.extend(cookie_lifespan.to_be_bytes());
+                writer.write_slice(&INIT_OPT_COOKIE_PRESERVATIVE.to_be_bytes())?;
+                writer.write_slice(&8u16.to_be_bytes())?;
+                writer.write_slice(&cookie_lifespan.to_be_bytes())?;
             }
             Self::HostnameAddress(addr) => {
                 let unpadded_len = u16::try_from(self.unpadded_len())
                     .map_err(|_| SerializationError::length_encoding(Sctp::name()))?;
-                bytes.extend(INIT_OPT_HOSTNAME_ADDR.to_be_bytes());
-                bytes.extend(unpadded_len.to_be_bytes());
-                bytes.extend(addr);
-                bytes.extend(iter::repeat(0).take(
-                    utils::padded_length::<4>(unpadded_len as usize) - unpadded_len as usize,
-                ));
+                writer.write_slice(&INIT_OPT_HOSTNAME_ADDR.to_be_bytes())?;
+                writer.write_slice(&unpadded_len.to_be_bytes())?;
+                writer.write_slice(&addr)?;
+                for _ in unpadded_len as usize..utils::padded_length::<4>(unpadded_len as usize) {
+                    writer.write_slice(&[0])?;
+                }
             }
             Self::SupportedAddressTypes(addr_types) => {
                 let unpadded_len = u16::try_from(self.unpadded_len())
                     .map_err(|_| SerializationError::length_encoding(Sctp::name()))?;
-                bytes.extend(INIT_OPT_SUPP_ADDR_TYPES.to_be_bytes());
-                bytes.extend(unpadded_len.to_be_bytes());
+                writer.write_slice(&INIT_OPT_SUPP_ADDR_TYPES.to_be_bytes())?;
+                writer.write_slice(&unpadded_len.to_be_bytes())?;
                 for addr_type in addr_types {
-                    bytes.extend(addr_type.to_be_bytes());
+                    writer.write_slice(&addr_type.to_be_bytes())?;
                 }
-                bytes.extend(iter::repeat(0).take(
-                    utils::padded_length::<4>(unpadded_len as usize) - unpadded_len as usize,
-                ));
+
+                for _ in unpadded_len as usize..utils::padded_length::<4>(unpadded_len as usize) {
+                    writer.write_slice(&[0])?;
+                }
             }
             Self::Unknown(opt_type, data) => {
                 let unpadded_len = u16::try_from(self.unpadded_len())
                     .map_err(|_| SerializationError::length_encoding(Sctp::name()))?;
-                bytes.extend(opt_type.to_be_bytes());
-                bytes.extend(unpadded_len.to_be_bytes());
-                bytes.extend(data);
-                bytes.extend(iter::repeat(0).take(
-                    utils::padded_length::<4>(unpadded_len as usize) - unpadded_len as usize,
-                ));
+                writer.write_slice(&opt_type.to_be_bytes())?;
+                writer.write_slice(&unpadded_len.to_be_bytes())?;
+                writer.write_slice(data)?;
+                for _ in unpadded_len as usize..utils::padded_length::<4>(unpadded_len as usize) {
+                    writer.write_slice(&[0])?;
+                }
             }
         }
         Ok(())
@@ -1691,21 +1701,23 @@ impl InitAckChunk {
         &mut self.options
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_INIT_ACK);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_INIT_ACK, self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(self.init_tag.to_be_bytes());
-        bytes.extend(self.a_rwnd.to_be_bytes());
-        bytes.extend(self.ostreams.to_be_bytes());
-        bytes.extend(self.istreams.to_be_bytes());
-        bytes.extend(self.init_tsn.to_be_bytes());
+        )?;
+        writer.write_slice(&self.init_tag.to_be_bytes())?;
+        writer.write_slice(&self.a_rwnd.to_be_bytes())?;
+        writer.write_slice(&self.ostreams.to_be_bytes())?;
+        writer.write_slice(&self.istreams.to_be_bytes())?;
+        writer.write_slice(&self.init_tsn.to_be_bytes())?;
         for option in &self.options {
-            option.to_bytes_extended(bytes)?;
+            option.to_bytes_extended(writer)?;
         }
 
         Ok(())
@@ -1977,45 +1989,54 @@ impl InitAckOption {
         utils::padded_length::<4>(self.unpadded_len())
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         let unpadded_len = u16::try_from(self.unpadded_len())
             .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
             .to_be_bytes();
 
         match self {
             InitAckOption::StateCookie(c) => {
-                bytes.extend(INIT_ACK_OPT_STATE_COOKIE.to_be_bytes());
-                bytes.extend(unpadded_len);
-                bytes.extend(c);
-                bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+                writer.write_slice(&INIT_ACK_OPT_STATE_COOKIE.to_be_bytes())?;
+                writer.write_slice(&unpadded_len)?;
+                writer.write_slice(c)?;
+                for _ in self.unpadded_len()..self.len() {
+                    writer.write_slice(&[0])?;
+                }
             }
             InitAckOption::Ipv4Address(ipv4) => {
-                bytes.extend(INIT_ACK_OPT_IPV4_ADDRESS.to_be_bytes());
-                bytes.extend(unpadded_len);
-                bytes.extend(ipv4.to_be_bytes());
+                writer.write_slice(&INIT_ACK_OPT_IPV4_ADDRESS.to_be_bytes())?;
+                writer.write_slice(&unpadded_len)?;
+                writer.write_slice(&ipv4.to_be_bytes())?;
             }
             InitAckOption::Ipv6Address(ipv6) => {
-                bytes.extend(INIT_ACK_OPT_IPV6_ADDRESS.to_be_bytes());
-                bytes.extend(unpadded_len);
-                bytes.extend(ipv6.to_be_bytes());
+                writer.write_slice(&INIT_ACK_OPT_IPV6_ADDRESS.to_be_bytes())?;
+                writer.write_slice(&unpadded_len)?;
+                writer.write_slice(&ipv6.to_be_bytes())?;
             }
             InitAckOption::UnrecognizedParameter(param) => {
-                bytes.extend(INIT_ACK_OPT_UNRECOGNIZED_PARAM.to_be_bytes());
-                bytes.extend(unpadded_len);
-                param.to_bytes_extended(bytes)?;
+                writer.write_slice(&INIT_ACK_OPT_UNRECOGNIZED_PARAM.to_be_bytes())?;
+                writer.write_slice(&unpadded_len)?;
+                param.to_bytes_extended(writer)?;
                 // No need for padding--parameter is type-checked and guaranteed to be padded
             }
             InitAckOption::HostnameAddress(host) => {
-                bytes.extend(INIT_ACK_OPT_HOSTNAME_ADDR.to_be_bytes());
-                bytes.extend(unpadded_len);
-                bytes.extend(host);
-                bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+                writer.write_slice(&INIT_ACK_OPT_HOSTNAME_ADDR.to_be_bytes())?;
+                writer.write_slice(&unpadded_len)?;
+                writer.write_slice(&host)?;
+                for _ in self.unpadded_len()..self.len() {
+                    writer.write_slice(&[0])?;
+                }
             }
             InitAckOption::Unknown(t, v) => {
-                bytes.extend(t.to_be_bytes());
-                bytes.extend(unpadded_len);
-                bytes.extend(v);
-                bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+                writer.write_slice(&t.to_be_bytes())?;
+                writer.write_slice(&unpadded_len)?;
+                writer.write_slice(v)?;
+                for _ in self.unpadded_len()..self.len() {
+                    writer.write_slice(&[0])?;
+                }
             }
         }
 
@@ -2281,33 +2302,36 @@ impl SackChunk {
         &mut self.duplicate_tsns
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_SACK);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_SACK])?;
+        writer.write_slice(&[self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(self.cum_tsn_ack.to_be_bytes());
-        bytes.extend(self.a_rwnd.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.gap_ack_blocks.len())
+        )?;
+        writer.write_slice(&self.cum_tsn_ack.to_be_bytes())?;
+        writer.write_slice(&self.a_rwnd.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.gap_ack_blocks.len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(
-            u16::try_from(self.duplicate_tsns.len())
+        )?;
+        writer.write_slice(
+            &u16::try_from(self.duplicate_tsns.len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
+        )?;
         for (gap_ack_start, gap_ack_end) in &self.gap_ack_blocks {
-            bytes.extend(gap_ack_start.to_be_bytes());
-            bytes.extend(gap_ack_end.to_be_bytes());
+            writer.write_slice(&gap_ack_start.to_be_bytes())?;
+            writer.write_slice(&gap_ack_end.to_be_bytes())?;
         }
 
         for dup_tsn in &self.duplicate_tsns {
-            bytes.extend(dup_tsn.to_be_bytes());
+            writer.write_slice(&dup_tsn.to_be_bytes())?;
         }
         // All parameters are multiples of 4, so no padding at end
 
@@ -2591,22 +2615,26 @@ impl HeartbeatChunk {
         &mut self.heartbeat
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_HEARTBEAT);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_HEARTBEAT, self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(1u16.to_be_bytes()); // HEARTBEAT_OPT_HEARTBEAT_INFO (the only option available for HEARTBEAT chunks)
-        bytes.extend(
-            u16::try_from(self.heartbeat.len())
+        )?;
+        writer.write_slice(&1u16.to_be_bytes())?; // HEARTBEAT_OPT_HEARTBEAT_INFO (the only option available for HEARTBEAT chunks)
+        writer.write_slice(
+            &u16::try_from(self.heartbeat.len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.heartbeat);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.heartbeat)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -2857,22 +2885,26 @@ impl HeartbeatAckChunk {
         &mut self.heartbeat
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_HEARTBEAT_ACK);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_HEARTBEAT_ACK, self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(1u16.to_be_bytes()); // HEARTBEAT_ACK_OPT_HEARTBEAT_INFO - the only option available, so we don't define it
-        bytes.extend(
-            u16::try_from(self.heartbeat.len())
+        )?;
+        writer.write_slice(&1u16.to_be_bytes())?; // HEARTBEAT_ACK_OPT_HEARTBEAT_INFO - the only option available, so we don't define it
+        writer.write_slice(
+            &u16::try_from(self.heartbeat.len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.heartbeat);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.heartbeat)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -3043,16 +3075,19 @@ impl AbortChunk {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_ABORT);
-        bytes.push(self.flags.bits());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_ABORT])?;
+        writer.write_slice(&[self.flags.bits()])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
+        )?;
         for cause in &self.causes {
-            cause.to_bytes_extended(bytes)?;
+            cause.to_bytes_extended(writer)?;
         }
 
         Ok(())
@@ -3294,33 +3329,35 @@ impl ErrorCause {
         }
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         match self {
-            ErrorCause::InvalidStreamIdentifier(e) => e.to_bytes_extended(bytes),
-            ErrorCause::MissingMandatoryParameter(e) => e.to_bytes_extended(bytes)?,
-            ErrorCause::StaleCookie(e) => e.to_bytes_extended(bytes),
+            ErrorCause::InvalidStreamIdentifier(e) => e.to_bytes_extended(writer),
+            ErrorCause::MissingMandatoryParameter(e) => e.to_bytes_extended(writer),
+            ErrorCause::StaleCookie(e) => e.to_bytes_extended(writer),
             ErrorCause::OutOfResource => {
-                bytes.extend(ERR_CODE_OUT_OF_RESOURCE.to_be_bytes());
-                bytes.extend(4u16.to_be_bytes());
+                writer.write_slice(&ERR_CODE_OUT_OF_RESOURCE.to_be_bytes())?;
+                writer.write_slice(&4u16.to_be_bytes())
             }
-            ErrorCause::UnresolvableAddress(e) => e.to_bytes_extended(bytes)?,
-            ErrorCause::UnrecognizedChunkType(e) => e.to_bytes_extended(bytes),
+            ErrorCause::UnresolvableAddress(e) => e.to_bytes_extended(writer),
+            ErrorCause::UnrecognizedChunkType(e) => e.to_bytes_extended(writer),
             ErrorCause::InvalidMandatoryParameter => {
-                bytes.extend(ERR_CODE_INVALID_MAND_PARAM.to_be_bytes());
-                bytes.extend(4u16.to_be_bytes());
+                writer.write_slice(&ERR_CODE_INVALID_MAND_PARAM.to_be_bytes())?;
+                writer.write_slice(&4u16.to_be_bytes())
             }
-            ErrorCause::UnrecognizedParameters(e) => e.to_bytes_extended(bytes)?,
-            ErrorCause::NoUserData(e) => e.to_bytes_extended(bytes),
+            ErrorCause::UnrecognizedParameters(e) => e.to_bytes_extended(writer),
+            ErrorCause::NoUserData(e) => e.to_bytes_extended(writer),
             ErrorCause::CookieDuringShutdown => {
-                bytes.extend(ERR_CODE_COOKIE_RCVD_SHUTTING_DOWN.to_be_bytes());
-                bytes.extend(4u16.to_be_bytes());
+                writer.write_slice(&ERR_CODE_COOKIE_RCVD_SHUTTING_DOWN.to_be_bytes())?;
+                writer.write_slice(&4u16.to_be_bytes())
             }
-            ErrorCause::AssociationNewAddress(e) => e.to_bytes_extended(bytes)?,
-            ErrorCause::UserInitiatedAbort(e) => e.to_bytes_extended(bytes)?,
-            ErrorCause::ProtocolViolation(e) => e.to_bytes_extended(bytes)?,
-            ErrorCause::Unknown(e) => e.to_bytes_extended(bytes)?,
+            ErrorCause::AssociationNewAddress(e) => e.to_bytes_extended(writer),
+            ErrorCause::UserInitiatedAbort(e) => e.to_bytes_extended(writer),
+            ErrorCause::ProtocolViolation(e) => e.to_bytes_extended(writer),
+            ErrorCause::Unknown(e) => e.to_bytes_extended(writer),
         }
-        Ok(())
     }
 }
 
@@ -3581,11 +3618,14 @@ impl StreamIdentifierError {
         self.reserved = reserved;
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(ERR_CODE_INVALID_STREAM_ID.to_be_bytes());
-        bytes.extend(8u16.to_be_bytes());
-        bytes.extend(self.stream_id.to_be_bytes());
-        bytes.extend(self.reserved.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_INVALID_STREAM_ID.to_be_bytes())?;
+        writer.write_slice(&8u16.to_be_bytes())?;
+        writer.write_slice(&self.stream_id.to_be_bytes())?;
+        writer.write_slice(&self.reserved.to_be_bytes())
     }
 }
 
@@ -3745,24 +3785,26 @@ impl MissingParameterError {
         &mut self.missing_params
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(ERR_CODE_MISSING_MAND_PARAM.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_MISSING_MAND_PARAM.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(
-            (u32::try_from(self.missing_params.len())
-                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?)
-            .to_be_bytes(),
-        );
+        )?;
+        writer.write_slice(
+            &u32::try_from(self.missing_params.len())
+                .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
+                .to_be_bytes(),
+        )?;
         for param in &self.missing_params {
-            bytes.extend(param.to_be_bytes());
+            writer.write_slice(&param.to_be_bytes())?;
         }
         if self.missing_params.len() % 4 != 0 {
-            bytes.push(0);
-            bytes.push(0);
+            writer.write_slice(&[0, 0])?;
         }
         Ok(())
     }
@@ -3969,10 +4011,13 @@ impl StaleCookieError {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(ERR_CODE_STALE_COOKIE.to_be_bytes());
-        bytes.extend(8u16.to_be_bytes());
-        bytes.extend(self.staleness.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_STALE_COOKIE.to_be_bytes())?;
+        writer.write_slice(&8u16.to_be_bytes())?;
+        writer.write_slice(&self.staleness.to_be_bytes())
     }
 }
 
@@ -4130,15 +4175,20 @@ impl UnresolvableAddrError {
         &mut self.addr
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(ERR_CODE_UNRESOLVABLE_ADDRESS.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_UNRESOLVABLE_ADDRESS.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.addr);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.addr)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -4311,10 +4361,13 @@ impl UnrecognizedChunkError {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(ERR_CODE_STALE_COOKIE.to_be_bytes());
-        bytes.extend(8u16.to_be_bytes());
-        bytes.extend(&self.chunk);
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_STALE_COOKIE.to_be_bytes())?;
+        writer.write_slice(&8u16.to_be_bytes())?;
+        writer.write_slice(&self.chunk)
     }
 }
 
@@ -4463,15 +4516,18 @@ impl UnrecognizedParamError {
         &mut self.params
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(ERR_CODE_UNRECOGNIZED_PARAMS.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_UNRECOGNIZED_PARAMS.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
+        )?;
         for param in self.params.iter() {
-            param.to_bytes_extended(bytes)?;
+            param.to_bytes_extended(writer)?;
         }
 
         Ok(())
@@ -4651,10 +4707,13 @@ impl NoUserDataError {
         self.tsn = tsn;
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.extend(ERR_CODE_NO_USER_DATA.to_be_bytes());
-        bytes.extend(8u16.to_be_bytes());
-        bytes.extend(self.tsn.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_NO_USER_DATA.to_be_bytes())?;
+        writer.write_slice(&8u16.to_be_bytes())?;
+        writer.write_slice(&self.tsn.to_be_bytes())
     }
 }
 
@@ -4811,15 +4870,18 @@ impl AssociationNewAddrError {
         &mut self.tlvs
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(ERR_CODE_RESTART_ASSOC_NEW_ADDR.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_RESTART_ASSOC_NEW_ADDR.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
+        )?;
         for tlv in self.tlvs.iter() {
-            tlv.to_bytes_extended(bytes)?;
+            tlv.to_bytes_extended(writer)?;
         }
 
         Ok(())
@@ -4975,15 +5037,20 @@ impl UserInitiatedAbortError {
         &mut self.reason
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(ERR_CODE_USER_INITIATED_ABORT.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_USER_INITIATED_ABORT.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.reason);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.reason)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -5134,15 +5201,20 @@ impl ProtocolViolationError {
         &mut self.information
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(ERR_CODE_PROTOCOL_VIOLATION.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&ERR_CODE_PROTOCOL_VIOLATION.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.information);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.information)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -5313,15 +5385,20 @@ impl GenericParam {
         &mut self.value
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.extend(self.param_type.to_be_bytes());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&self.param_type.to_be_bytes())?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(self.value.iter());
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.value)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -5512,11 +5589,13 @@ impl ShutdownChunk {
         self.cum_tsn_ack = ack;
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(CHUNK_TYPE_SHUTDOWN);
-        bytes.push(self.flags);
-        bytes.extend(8u16.to_be_bytes());
-        bytes.extend(self.cum_tsn_ack.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_SHUTDOWN, self.flags])?;
+        writer.write_slice(&8u16.to_be_bytes())?;
+        writer.write_slice(&self.cum_tsn_ack.to_be_bytes())
     }
 }
 
@@ -5675,10 +5754,12 @@ impl ShutdownAckChunk {
         4
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(CHUNK_TYPE_SHUTDOWN_ACK);
-        bytes.push(self.flags);
-        bytes.extend(4u16.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_SHUTDOWN_ACK, self.flags])?;
+        writer.write_slice(&4u16.to_be_bytes())
     }
 }
 
@@ -5836,16 +5917,18 @@ impl ErrorChunk {
         &mut self.causes
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_ERROR);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_ERROR, self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
+        )?;
         for cause in &self.causes {
-            cause.to_bytes_extended(bytes)?
+            cause.to_bytes_extended(writer)?
         }
 
         Ok(())
@@ -6020,16 +6103,20 @@ impl CookieEchoChunk {
         &mut self.cookie
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(CHUNK_TYPE_COOKIE_ECHO);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_COOKIE_ECHO, self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.cookie);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.cookie)?;
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -6204,10 +6291,12 @@ impl CookieAckChunk {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(CHUNK_TYPE_COOKIE_ACK);
-        bytes.push(self.flags);
-        bytes.extend(4u16.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_COOKIE_ACK, self.flags])?;
+        writer.write_slice(&4u16.to_be_bytes())
     }
 }
 
@@ -6351,10 +6440,12 @@ impl ShutdownCompleteChunk {
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
-        bytes.push(CHUNK_TYPE_SHUTDOWN_COMPLETE);
-        bytes.push(self.flags.bits());
-        bytes.extend(4u16.to_be_bytes());
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[CHUNK_TYPE_SHUTDOWN_COMPLETE, self.flags.bits()])?;
+        writer.write_slice(&4u16.to_be_bytes())
     }
 }
 
@@ -6535,16 +6626,21 @@ impl UnknownChunk {
         &mut self.value
     }
 
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) -> Result<(), SerializationError> {
-        bytes.push(self.chunk_type);
-        bytes.push(self.flags);
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
+        writer.write_slice(&[self.chunk_type, self.flags])?;
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(Sctp::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(&self.value);
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len()));
+        )?;
+        writer.write_slice(&self.value)?;
+
+        for _ in self.unpadded_len()..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }
@@ -6875,25 +6971,28 @@ impl LayerObject for SctpDataChunk {
 impl ToBytes for SctpDataChunk {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
-        let start = bytes.len();
-        bytes.push(0); // DATA Type = 0
-        bytes.push(self.flags.bits());
-        bytes.extend(
-            u16::try_from(self.unpadded_len())
+        let start = writer.len();
+        writer.update_layer::<SctpDataChunk>();
+        writer.write_slice(&[0, self.flags.bits()])?; // DATA Type = 0
+        writer.write_slice(
+            &u16::try_from(self.unpadded_len())
                 .map_err(|_| SerializationError::length_encoding(SctpDataChunk::name()))?
                 .to_be_bytes(),
-        );
-        bytes.extend(self.tsn.to_be_bytes());
-        bytes.extend(self.stream_id.to_be_bytes());
-        bytes.extend(self.stream_seq.to_be_bytes());
-        bytes.extend(self.proto_id.to_be_bytes());
+        )?;
+        writer.write_slice(&self.tsn.to_be_bytes())?;
+        writer.write_slice(&self.stream_id.to_be_bytes())?;
+        writer.write_slice(&self.stream_seq.to_be_bytes())?;
+        writer.write_slice(&self.proto_id.to_be_bytes())?;
         if let Some(p) = &self.payload {
-            p.to_bytes_checksummed(bytes, Some((SctpDataChunk::layer_id(), start)))?;
+            p.to_bytes_checksummed(writer, Some((SctpDataChunk::layer_id(), start)))?;
         }
-        bytes.extend(core::iter::repeat(0).take(self.len() - self.unpadded_len()));
+
+        for _ in self.unpadded_len() as usize..self.len() {
+            writer.write_slice(&[0])?;
+        }
 
         Ok(())
     }

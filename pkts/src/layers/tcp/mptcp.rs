@@ -7,7 +7,8 @@ use bitflags::bitflags;
 
 use pkts_common::Buffer;
 
-use crate::{utils, IndexedWritable, PacketWriter};
+use crate::utils;
+use crate::writer::{PacketWritable, PacketWriter};
 
 use super::{SerializationError, Tcp, TCP_OPT_KIND_MPTCP};
 
@@ -40,7 +41,7 @@ pub enum Mptcp {
 impl Mptcp {
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         match self {
             Mptcp::Capable(o) => o.to_bytes_extended(writable),
@@ -101,12 +102,12 @@ pub struct GenericOpt {
 impl GenericOpt {
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[(self.subtype << 4) | self.reserved])?;
-        writer.write(self.data.as_slice())
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[(self.subtype << 4) | self.reserved])?;
+        writer.write_slice(self.data.as_slice())
     }
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
@@ -197,26 +198,26 @@ impl CapableOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[(self.subtype() << 4) | self.version(), self.flags().bits()])?;
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[(self.subtype() << 4) | self.version(), self.flags().bits()])?;
 
         if let Some(sender_key) = self.sender_key {
-            writer.write(&sender_key.to_be_bytes())?;
+            writer.write_slice(&sender_key.to_be_bytes())?;
         }
 
         if let Some(receiver_key) = self.receiver_key {
-            writer.write(&receiver_key.to_be_bytes())?;
+            writer.write_slice(&receiver_key.to_be_bytes())?;
         }
 
         if let Some(data_len) = self.data_len {
-            writer.write(&data_len.to_be_bytes())?;
+            writer.write_slice(&data_len.to_be_bytes())?;
         }
 
         if let Some(chksum) = self.chksum {
-            writer.write(&chksum.to_be_bytes())?;
+            writer.write_slice(&chksum.to_be_bytes())?;
         }
 
         Ok(())
@@ -370,21 +371,21 @@ impl JoinOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
         match &self.payload {
             JoinPayload::Syn(syn) => {
-                writer.write(&syn.receiver_token.to_be_bytes())?;
-                writer.write(&syn.sender_rand.to_be_bytes())
+                writer.write_slice(&syn.receiver_token.to_be_bytes())?;
+                writer.write_slice(&syn.sender_rand.to_be_bytes())
             }
             JoinPayload::SynAck(synack) => {
-                writer.write(&synack.sender_hmac)?;
-                writer.write(&synack.sender_rand.to_be_bytes())
+                writer.write_slice(&synack.sender_hmac)?;
+                writer.write_slice(&synack.sender_rand.to_be_bytes())
             }
-            JoinPayload::Ack(ack) => writer.write(&ack.sender_hmac),
+            JoinPayload::Ack(ack) => writer.write_slice(&ack.sender_hmac),
         }
     }
 
@@ -564,32 +565,32 @@ impl DssOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&((self.subtype() << 4) as u16 | self.flags().bits()).to_be_bytes())?;
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&((self.subtype() << 4) as u16 | self.flags().bits()).to_be_bytes())?;
 
         if let Some(ack) = self.ack {
             if self.flags.contains(DssFlags::ACK_8_OCTETS) {
-                writer.write(&ack.to_be_bytes())?;
+                writer.write_slice(&ack.to_be_bytes())?;
             } else {
-                writer.write(&(ack as u32).to_be_bytes())?;
+                writer.write_slice(&(ack as u32).to_be_bytes())?;
             }
         }
 
         if let Some(dsn_info) = &self.dsn_info {
             if self.flags.contains(DssFlags::DSN_8_OCTETS) {
-                writer.write(&dsn_info.dsn.to_be_bytes())?;
+                writer.write_slice(&dsn_info.dsn.to_be_bytes())?;
             } else {
-                writer.write(&(dsn_info.dsn as u32).to_be_bytes())?;
+                writer.write_slice(&(dsn_info.dsn as u32).to_be_bytes())?;
             }
 
-            writer.write(&dsn_info.ssn.to_be_bytes())?;
-            writer.write(&dsn_info.dll.to_be_bytes())?;
+            writer.write_slice(&dsn_info.ssn.to_be_bytes())?;
+            writer.write_slice(&dsn_info.dll.to_be_bytes())?;
 
             if let Some(chksum) = dsn_info.chksum {
-                writer.write(&chksum.to_be_bytes())?;
+                writer.write_slice(&chksum.to_be_bytes())?;
             }
         }
 
@@ -790,27 +791,27 @@ impl AddAddrOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[(self.subtype() << 4) | self.flags().bits(), self.addr_id])?;
 
         match &self.addr {
             IpAddr::V4(v4) => {
-                writer.write(&v4.octets())?;
+                writer.write_slice(&v4.octets())?;
             }
             IpAddr::V6(v6) => {
-                writer.write(&v6.octets())?;
+                writer.write_slice(&v6.octets())?;
             }
         }
 
         if let Some(port) = self.port {
-            writer.write(&port.to_be_bytes())?;
+            writer.write_slice(&port.to_be_bytes())?;
         }
 
         if let Some(hmac) = self.hmac {
-            writer.write(&hmac)?;
+            writer.write_slice(&hmac)?;
         }
 
         Ok(())
@@ -942,12 +943,12 @@ impl RemoveAddrOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[(self.subtype() << 4) | self.flags().bits()])?;
-        writer.write(self.addr_ids.as_slice())
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[(self.subtype() << 4) | self.flags().bits()])?;
+        writer.write_slice(self.addr_ids.as_slice())
     }
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
@@ -990,12 +991,12 @@ impl FallbackOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
-        writer.write(&self.dsn.to_be_bytes())
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
+        writer.write_slice(&self.dsn.to_be_bytes())
     }
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
@@ -1048,12 +1049,12 @@ impl FastCloseOpt {
 
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
-        writer.write(&self.receiver_key.to_be_bytes())
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&(self.subtype() as u16 | self.reserved).to_be_bytes())?;
+        writer.write_slice(&self.receiver_key.to_be_bytes())
     }
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
@@ -1106,12 +1107,12 @@ pub struct ResetOpt {
 impl ResetOpt {
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[self.subtype() | self.flags.bits()])?;
-        writer.write(&[self.flags.bits()])
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[self.subtype() | self.flags.bits()])?;
+        writer.write_slice(&[self.flags.bits()])
     }
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {
@@ -1168,11 +1169,11 @@ pub struct PrioOpt {
 impl PrioOpt {
     pub fn to_bytes_extended(
         &self,
-        writable: &mut impl IndexedWritable,
+        writable: &mut impl PacketWritable,
     ) -> Result<(), SerializationError> {
         let mut writer = PacketWriter::new::<Tcp>(writable);
-        writer.write(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
-        writer.write(&[self.subtype() | self.flags.bits()])
+        writer.write_slice(&[TCP_OPT_KIND_MPTCP, self.byte_len() as u8])?;
+        writer.write_slice(&[self.subtype() | self.flags.bits()])
     }
 
     pub fn from_bytes_unchecked(data: &[u8]) -> Self {

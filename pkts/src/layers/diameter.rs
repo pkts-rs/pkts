@@ -16,9 +16,10 @@ use crate::layers::dev_traits::*;
 use crate::layers::traits::*;
 use crate::layers::*;
 use crate::utils;
+use crate::writer::PacketWritable;
 
 use core::iter::Iterator;
-use core::{cmp, iter, slice};
+use core::{cmp, slice};
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 use alloc::boxed::Box;
@@ -194,31 +195,32 @@ impl LayerObject for Diameter {
 impl ToBytes for Diameter {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
+        writer.update_layer::<Diameter>();
         // Version
-        bytes.push(1);
+        writer.write_slice(&[1])?;
         let len: u32 = self.len().try_into().unwrap();
         assert!(
             len < 0x_00FF_FFFF,
             "Diameter packet length exceeded maximum size for Message Length field"
         );
         // Message Length
-        bytes.extend(&len.to_be_bytes()[1..]);
+        writer.write_slice(&len.to_be_bytes()[1..])?;
         // Command Flags
-        bytes.push(self.flags.bits());
+        writer.write_slice(&[self.flags.bits()])?;
         // Command Code
-        bytes.extend(&self.comm_code.to_be_bytes()[1..]);
+        writer.write_slice(&self.comm_code.to_be_bytes()[1..])?;
         // Application Identifier
-        bytes.extend(self.app_id.to_be_bytes());
+        writer.write_slice(&self.app_id.to_be_bytes())?;
         // Hop-by-Hop Identifier
-        bytes.extend(self.hop_id.to_be_bytes());
+        writer.write_slice(&self.hop_id.to_be_bytes())?;
         // End-to-End Identifier
-        bytes.extend(self.end_id.to_be_bytes());
+        writer.write_slice(&self.end_id.to_be_bytes())?;
         // AVPs
         for avp in self.avps() {
-            avp.to_bytes_extended(bytes);
+            avp.to_bytes_extended(writer)?;
         }
 
         Ok(())
@@ -566,30 +568,31 @@ impl LayerObject for DiamBase {
 impl ToBytes for DiamBase {
     fn to_bytes_checksummed(
         &self,
-        bytes: &mut Vec<u8>,
+        writer: &mut PacketWriter<'_, Vec<u8>>,
         _prev: Option<(LayerId, usize)>,
     ) -> Result<(), SerializationError> {
+        writer.update_layer::<DiamBase>();
         // Version
-        bytes.push(1);
+        writer.write_slice(&[1])?;
         let len: u32 = self.len().try_into().unwrap();
         assert!(
             len < 0x_00FF_FFFF,
             "Diameter packet length exceeded maximum size for Message Length field"
         );
         // Message Length
-        bytes.extend(&len.to_be_bytes()[1..]);
+        writer.write_slice(&len.to_be_bytes()[1..])?;
         // Command Flags
-        bytes.push(self.flags.bits());
+        writer.write_slice(&[self.flags.bits()])?;
         // Command Code
 
         // TODO: add
 
         // Application Identifier
-        bytes.extend(self.app_id.to_be_bytes());
+        writer.write_slice(&self.app_id.to_be_bytes())?;
         // Hop-by-Hop Identifier
-        bytes.extend(self.hop_id.to_be_bytes());
+        writer.write_slice(&self.hop_id.to_be_bytes())?;
         // End-to-End Identifier
-        bytes.extend(self.end_id.to_be_bytes());
+        writer.write_slice(&self.end_id.to_be_bytes())?;
         // AVPs
         todo!()
     }
@@ -832,7 +835,7 @@ impl LayerObject for S6a {
 }
 
 impl ToBytes for S6a {
-    fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
+    fn to_bytes_extended(&self, bytes: &mut PacketWriter<'_, Vec<u8>>) {
         todo!()
     }
 }
@@ -946,13 +949,13 @@ impl BaseCommand {
     #[inline]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::new();
-        self.to_bytes_extended(&mut v);
+        let mut writer = PacketWriter::new::<DiamBase>(&mut v);
+        self.to_bytes_extended(&mut writer);
         v
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, _bytes: &mut Vec<u8>) {
-        _bytes.push(0); // TODO: remove
+    pub fn to_bytes_extended<T: PacketWritable>(&self, writer: &mut PacketWriter<'_, T>) {
         todo!()
     }
 }
@@ -1545,28 +1548,35 @@ impl GenericAvp {
     }
 
     #[inline]
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         let mut v = Vec::new();
-        self.to_bytes_extended(&mut v);
-        v
+        let mut writer = PacketWriter::new::<DiamBase>(&mut v);
+        self.to_bytes_extended(&mut writer)?;
+        Ok(v)
     }
 
     #[inline]
-    pub fn to_bytes_extended(&self, bytes: &mut Vec<u8>) {
+    pub fn to_bytes_extended<T: PacketWritable>(
+        &self,
+        writer: &mut PacketWriter<'_, T>,
+    ) -> Result<(), SerializationError> {
         // AVP Code
-        bytes.extend(self.code.to_be_bytes());
+        writer.write_slice(&self.code.to_be_bytes())?;
         // Flags
-        bytes.push(self.flags.bits());
+        writer.write_slice(&[self.flags.bits()])?;
         // AVP Length
-        bytes.extend(&self.unpadded_len().to_be_bytes()[1..]);
+        writer.write_slice(&self.unpadded_len().to_be_bytes()[1..])?;
         // Vendor ID
         if let Some(id) = self.vendor_id {
-            bytes.extend(id.to_be_bytes());
+            writer.write_slice(&id.to_be_bytes())?;
         }
         // Data
-        bytes.extend(&self.data);
+        writer.write_slice(&self.data)?;
         // Padding
-        bytes.extend(iter::repeat(0).take(self.len() - self.unpadded_len() as usize));
+        for _ in self.unpadded_len() as usize..self.len() {
+            writer.write_slice(&[0])?;
+        }
+        Ok(())
     }
 }
 

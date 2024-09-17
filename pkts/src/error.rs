@@ -77,6 +77,14 @@ impl SerializationError {
         }
     }
 
+    #[inline]
+    pub(crate) fn internal(layer: &'static str) -> Self {
+        SerializationError {
+            class: SerializationErrorClass::Internal,
+            layer,
+        }
+    }
+
     pub fn class(&self) -> SerializationErrorClass {
         self.class
     }
@@ -99,4 +107,6 @@ pub enum SerializationErrorClass {
     /// [`Ipv6`]: struct@crate::layers::ip::Ipv6
     /// [`Tcp`]: struct@crate::layers::tcp::Tcp
     BadUpperLayer,
+    /// An unexpected error occurred internally while encoding.
+    Internal,
 }
