@@ -193,9 +193,9 @@ pub trait LayerObject: AsAny + Debug + ToBytes {
 // The following is a gross amalgamation of recursive functions. I'm not proud of it.
 //
 // Well, that's not exactly correct. I _am_ proud that it manages to crawl past the borrow checker
-// without resorting to any `unsafe`. But its janky and inefficient and way less readable then it
-// ought to be. Looking forward to tearing this out and replace it with a nice single `for`
-// loop + recursive function once polonius is released.
+// without resorting to any `unsafe`. But it's awful and inefficient and way less readable then it
+// ought to be. Looking forward to tearing this out and replace it with a nice single `for` loop +
+// recursive function once the Polonius borrow checker is stable.
 
 /// Recursively searches through tree branches for a certain `Layer` type up to a given depth.
 #[doc(hidden)]
