@@ -13,6 +13,8 @@
 
 #![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "std"), no_std)]
+// Show required OS/features on docs.rs.
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg(all(not(feature = "std"), feature = "alloc"))]
 extern crate alloc;

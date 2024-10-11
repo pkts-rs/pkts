@@ -15,6 +15,10 @@ repository = "https://github.com/pkts-rs/pkts"
 keywords = ["packets", "network", "scapy", "parsing"]
 categories = ["network-programming", "encoding", "parsing"]
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rustc_1_77)'] }
 
