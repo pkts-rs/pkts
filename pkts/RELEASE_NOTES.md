@@ -2,6 +2,7 @@
 
 * 0.2.1
   - Fix minor README issues
+  - Update description
 
 * 0.2.0
   - Split out `rscap` and `pkts` into separate crates

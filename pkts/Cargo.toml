@@ -9,7 +9,7 @@ description = "Build, inspect and modify network protocol packet layers"
 # 1.77 - `core::net` stabilized (needed for `no-std` `IpAddr` types)--handled by cfg
 rust-version = "1.65"
 license = "MIT OR Apache-2.0"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2018"
 repository = "https://github.com/pkts-rs/pkts"
 keywords = ["packets", "network", "scapy", "parsing"]
