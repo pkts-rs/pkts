@@ -12,22 +12,29 @@
 [docs.rs]: https://docs.rs/pkts/
 
 
-### **pkts - an [rscap](https://crates.io/crates/rscap) submodule for creating, decoding and modifying packet layers**
+### **pkts - create, decode and modify network packet layers**
 
 ---
 
-`rscap` is a multi-purpose library for network packet capture/transmission and packet building. Its aims are twofold:
+`pkts` provides ergonomic, `no-std`-friendly APIs for handling packets from a diverse range of
+network protocols. It provides intuitive abstractions for handling packets that span multiple
+protocol layers, and aims to be as easy to use as `scapy` (a Python packet parsing framework)
+while also offering performant zero-allocation APIs suitable for embedded networking firmware.
+`unsafe` code is explicitly forbidden in the library, but we're well aware this doesn't guarantee
+the absence of potential Denial of Service threat vectors via `panic`s; as such, we're working on
+integrating both fuzzing and symbolic model checking to test the correctness of packet parsing
+implementations.
 
-1. To provide Rust-native platform tools for packet capture and transmission (comparable to `libpcap`, but written from the ground up in Rust)
-2. To expose a robust and ergonomic API for building packets and accessing/modifying packet data fields in various network protocols (like `scapy`, but with strong typing and significantly improved performance)
-
-The `pkts` submodule focuses solely on (2)--it provides a packet-building API for a wide variety of network protocol layers.
-This library isn't meant to only cover Physical through Transport layers or stateless protocols--thanks to `Sequence` and `Session` types (which defragment/reorder packets and track packet state, respectively), any application-layer protocol can potentially be captured and decoded.
+For those looking for packet capture/transmission functionality (similar to what `libpcap` or
+`scapy` offer), the `rscap` crate provides cross-platform and rust-native APIs for such that
+integrate well with `pkts`.
 
 ## Features
 
-- **Robust APIs for building/modifying packets:** rscap provides simple operations to combine various layers into a single packet, and to index into a different layers of a packet to retrieve or modify fields. Users of [`scapy`](https://github.com/secdev/scapy) may find the API surprisingly familiar, especially for layer composition and indexing operations:
-
+- **Robust APIs for building/modifying packets:** `pkts` provides simple operations to combine
+various layers into a single packet, and to index into a different layers of a packet to retrieve
+or modify fields. Users of [`scapy`](https://github.com/secdev/scapy) may find the API surprisingly
+familiar, especially for layer composition and indexing operations:
 ```rust
 use layers::{ip::Ipv4, tcp::Tcp};
 
@@ -35,12 +42,55 @@ let pkt = Ip::new() / Tcp::new();
 pkt[Tcp].set_sport(80);
 pkt[Tcp].set_dport(12345);
 ```
-- **`no-std` Compatible:** every packet type in the `pkts` crate can be used without the standard library, and a special `LayerRef` type can be used to access raw packet bytes without any allocations. Packets can additionally be constructed from scratch in `no-std` environments using allocation-free Builder patterns.
-- **Packet defragmentation/reordering:** In some protocols, packets may be fragmented (such as IPv4) or arrive out-of-order (TCP, SCTP, etc.). Rscap overcomes both of these issues through `Sequence` types that transparently handle defragmentation and reordering. `Sequence` types can even be stacked so that application-layer data can easily be reassembled from captured packets. They even work in `no-std` environments with or without `alloc`.
-- **Stateful packet support:** Many network protocols are stateful, and interpreting packets from such protocols can be difficult (if not impossible) to accomplish unless information about the protocol session is stored. Rscap provides `Session` types that handle these kinds of packets--Sessions ensure that packets are validated based on the current expected state of the protocol. Just like `Sequence`, `Session` types are compatible with `no-std` environments and do not require `alloc`.
+- **`no-std` Compatible:** every packet type in the `pkts` crate can be used without the standard
+library, and a special `LayerRef` type can be used to access raw packet bytes without any
+allocations. Packets can additionally be constructed from scratch in `no-std` environments using
+allocation-free `Builder` patterns.
+- **Packet defragmentation/reordering:** In some protocols, packets may be fragmented (such as IPv4)
+or arrive out-of-order (TCP, SCTP, etc.). `pkts` overcomes both of these issues through `Sequence`
+types that transparently handle defragmentation and reordering. `Sequence` types can even be stacked
+so that application-layer data can easily be reassembled from captured packets. They even work in
+`no-std` environments with or without an allocator.
+- **Stateful packet support:** Many network protocols are stateful, and interpreting packets from
+such protocols can be difficult (if not impossible) to accomplish unless information about the
+protocol session is stored. `pkts` provides `Session` types that handle these kinds of
+packets--`Session`s ensure that packets are validated based on the current expected state of the
+protocol. Just like `Sequence`types, `Session` types are compatible with `no-std`/`no-alloc`
+environments.
+
+## Dependency Policy
+
+Like other crates managed by pkts.org, `pkts` aims to rely on a minimal set of dependencies
+that are vetted and well-used in the Rust ecosystem. As such, `pkts` makes use of only the
+following dependencies:
+
+* `bitflags` - Provides a simple, clean interface for accessing and modifying bitfields in packets.
+Used extensively in the rust ecosystem (e.g. by `rustix`, `openssl`, `bindgen`, etc.)
+* `pkts-macros` - Procedural macros used by `pkts`; nested dependencies are only `syn` and `quote`.
+* `pkts-common` - Shared data types/methods for `pkts` and other crates; no nested dependencies.
+
+We do not plan on adding in any additional dependencies to `pkts` in future releases, with the
+exception of submodule libraries that break off individual pieces of functionality from `pkts` and
+are maintained by pkts.org.
 
 ## License
 
-The source code of this project is licensed under either the MIT License or the Apache 2.0 License, at your option.
+This project is licensed under either of
 
+* [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+  ([LICENSE-APACHE](https://github.com/rust-lang/libc/blob/HEAD/LICENSE-APACHE))
+
+* [MIT License](https://opensource.org/licenses/MIT)
+  ([LICENSE-MIT](https://github.com/rust-lang/libc/blob/HEAD/LICENSE-MIT))
+
+at your option.
+
+## Contributing
+
+`pkts` is open to contribution--feel free to submit an issue or pull request if there's
+something you'd like to add to the library.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in
+`pkts` by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without
+any additional terms or conditions.
 
