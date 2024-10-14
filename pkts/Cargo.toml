@@ -1,7 +1,7 @@
 [package]
 name = "pkts"
 authors = ["Nathaniel Bennett <me[at]nathanielbennett[dotcom]>"]
-description = "tools for building, inspecting and modifying network protocol packets"
+description = "Build, inspect and modify network protocol packet layers"
 # 1.56 - Rust edition 2021 released; `bitflags`/`quote`/`proc_macro2` MSRV
 # 1.61 - `syn` MSRV
 # 1.63 - `array::from_fn` stabilized
